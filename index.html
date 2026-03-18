@@ -551,13 +551,13 @@ function mapRows(rows) {
     modified: findField(r, keys, ['Last_Modified_Date','Last Modified','Modified Date','Modified','updated','last update','last activity']) || '—',
     close:  findField(r, keys, ['Forecasted_Close_Date','close','date','expected','due','target','close date']) || '—',
     months: parseFloat((findField(r, keys, ['Months','duration','length','contract months','project months']) || '0').replace(/[^0-9.-]/g,'')) || 0,
-    svc_creative:      parseFloat((findField(r, keys, ['Calc_Column_1']) || '0').replace(/[^0-9.-]/g,'')) || 0,
-    svc_photovideo:    parseFloat((findField(r, keys, ['Calc_Column_2']) || '0').replace(/[^0-9.-]/g,'')) || 0,
-    svc_organicsocial: parseFloat((findField(r, keys, ['Calc_Column_3']) || '0').replace(/[^0-9.-]/g,'')) || 0,
-    svc_paidmedia:     parseFloat((findField(r, keys, ['Calc_Column_4']) || '0').replace(/[^0-9.-]/g,'')) || 0,
-    svc_pr:            parseFloat((findField(r, keys, ['Calc_Column_5']) || '0').replace(/[^0-9.-]/g,'')) || 0,
-    svc_web:           parseFloat((findField(r, keys, ['Calc_Column_6']) || '0').replace(/[^0-9.-]/g,'')) || 0,
-    svc_clientsvc:     parseFloat((findField(r, keys, ['Calc_Column_7']) || '0').replace(/[^0-9.-]/g,'')) || 0,
+    svc_creative:      parseFloat((r['Calc_Column_1'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_photovideo:    parseFloat((r['Calc_Column_2'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_organicsocial: parseFloat((r['Calc_Column_3'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_paidmedia:     parseFloat((r['Calc_Column_4'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_pr:            parseFloat((r['Calc_Column_5'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_web:           parseFloat((r['Calc_Column_6'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_clientsvc:     parseFloat((r['Calc_Column_7'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
   })).filter(r => r.client !== '—' || r.name !== '—');
 }
 
