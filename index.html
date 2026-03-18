@@ -94,8 +94,11 @@
   /* Value bars */
   .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; cursor: pointer; padding: 4px; border-radius: var(--radius-sm); transition: background .1s; }
   .bar-row:hover { background: var(--surface2); }
-  .bar-lbl { font-size: 12px; color: var(--text2); width: 140px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bar-track { flex: 1; background: var(--surface2); border-radius: 4px; height: 22px; overflow: hidden; }
+  .bar-main { min-width: 0; flex: 1 1 360px; }
+  .bar-info { min-width: 0; }
+  .bar-lbl { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.25; white-space: normal; overflow: visible; text-overflow: clip; }
+  .bar-meta { font-size: 12px; font-weight: 500; color: var(--text); line-height: 1.25; margin-top: 2px; white-space: normal; overflow: visible; text-overflow: clip; }
+  .bar-track { flex: 0 0 min(42%, 340px); background: var(--surface2); border-radius: 4px; height: 22px; overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding: 0 8px; min-width: 60px; }
   .bar-amt { font-size: 11px; font-weight: 600; white-space: nowrap; }
   .bar-stg { font-size: 10px; padding: 2px 7px; border-radius: 8px; flex-shrink: 0; font-weight: 500; }
