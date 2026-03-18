@@ -305,14 +305,26 @@ function toggleConfig() {
 
 function extractSheetConfig(url) {
   const raw = String(url || '').trim();
-  const idMatch = raw.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   const gidMatch = raw.match(/[?&#]gid=([0-9]+)/);
-  const outputCsv = /output=csv|format=csv/i.test(raw);
+  const editIdMatch = raw.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  const pubIdMatch = raw.match(/spreadsheets\/d\/e\/([a-zA-Z0-9_-]+)/);
+  const isPublished = /\/pubhtml|\/pub(\?|$)/i.test(raw);
+  const isDirectCsv = /output=csv|format=csv/i.test(raw);
+
+  let normalizedUrl = raw;
+  if (isPublished && !isDirectCsv) {
+    const gid = gidMatch ? gidMatch[1] : '0';
+    const pubId = pubIdMatch ? pubIdMatch[1] : null;
+    if (pubId) {
+      normalizedUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
+    }
+  }
+
   return {
-    id: idMatch ? idMatch[1] : raw,
+    id: editIdMatch ? editIdMatch[1] : '',
     gid: gidMatch ? gidMatch[1] : '0',
-    raw,
-    isDirectCsv: outputCsv
+    raw: normalizedUrl,
+    isDirectCsv: isDirectCsv || isPublished
   };
 }
 
@@ -416,9 +428,7 @@ function parseCSV(text) {
     return (parsed.data || []).filter(r => Object.values(r).some(v => String(v || '').trim() !== ''));
   }
 
-  const lines = text.trim().split(/
-?
-/);
+  const lines = text.trim().split(/\r?\n/);
   if (!lines.length) return [];
   const headers = splitCSVLine(lines[0]).map(h => h.replace(/^"|"$/g,'').trim());
   return lines.slice(1).map(line => {
