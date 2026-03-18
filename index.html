@@ -63,16 +63,21 @@
   .config-banner.hidden { display: none; }
 
   /* Metrics */
-  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
   @media (max-width: 800px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 480px) { .metrics { grid-template-columns: 1fr; } }
   .mc { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
   .mc-lbl { font-size: 11px; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
   .mc-val { font-size: 26px; font-weight: 600; color: var(--text); line-height: 1; }
   .mc-sub { font-size: 11px; color: var(--text3); margin-top: 5px; }
+  .mc.clickable { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+  .mc.clickable:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.08); border-color: var(--border2); }
+  .mc.clickable:active { transform: translateY(0); }
+  .mc.active-filter { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
 
   /* Tabs */
-  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
   .tab { padding: 9px 16px; font-size: 13px; font-family: var(--font); color: var(--text2); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s; }
   .tab:hover { color: var(--text); }
   .tab.active { color: var(--text); font-weight: 500; border-bottom-color: var(--text); }
@@ -86,6 +91,19 @@
 
   /* Pipeline */
   .pipe { display: grid; gap: 10px; }
+  @media (max-width: 900px) { .pipe { grid-template-columns: 1fr !important; } }
+  @media (max-width: 640px) {
+    .app { padding: 16px 12px; }
+    .topbar-right { width: 100%; justify-content: space-between; }
+    .tab { white-space: nowrap; padding: 10px 14px; }
+    .filter-row { gap: 8px; }
+    .filter-row label { width: 100%; }
+    .filter-row select { width: 100%; min-height: 40px; }
+    .pcard { padding: 12px; }
+    .ppct { font-size: 18px; }
+    .pclient { font-size: 13px; }
+    .pname { font-size: 12px; }
+  }
   .scol { display: flex; flex-direction: column; gap: 8px; }
   .shdr { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: var(--radius) var(--radius) 0 0; margin-bottom: 8px; }
   .sname { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -170,8 +188,8 @@
     <div class="mc"><div class="mc-lbl">Active pipeline</div><div class="mc-val" id="m-total">—</div><div class="mc-sub" id="m-sub">pre-contract opps</div></div>
     <div class="mc"><div class="mc-lbl">Weighted value</div><div class="mc-val" id="m-weighted">—</div><div class="mc-sub">by close probability</div></div>
     <div class="mc"><div class="mc-lbl">Revenue closed in 2026</div><div class="mc-val" id="m-closed2026">—</div><div class="mc-sub">contract signed · modified in 2026</div></div>
-    <div class="mc"><div class="mc-lbl">New Business Revenue 2026</div><div class="mc-val" id="m-newbiz2026">—</div><div class="mc-sub">Cameron Poolton + Veronique James</div></div>
-    <div class="mc"><div class="mc-lbl">Upsell Revenue 2026</div><div class="mc-val" id="m-upsell2026">—</div><div class="mc-sub">all other closed revenue in 2026</div></div>
+    <div class="mc clickable" id="mc-newbiz2026" onclick="openClosed2026View('newbiz')"><div class="mc-lbl">New Business Revenue 2026</div><div class="mc-val" id="m-newbiz2026">—</div><div class="mc-sub">Cameron Poolton + Veronique James</div></div>
+    <div class="mc clickable" id="mc-upsell2026" onclick="openClosed2026View('upsell')"><div class="mc-lbl">Upsell Revenue 2026</div><div class="mc-val" id="m-upsell2026">—</div><div class="mc-sub">all other closed revenue in 2026</div></div>
   </div>
 
   <!-- Tabs -->
@@ -253,7 +271,7 @@
   <div class="panel" id="panel-closed2026">
     <div class="filter-row">
       <label>Owner:</label>
-      <select id="closed-owner-filter" onchange="renderClosed2026()"><option value="all">All owners</option></select>
+      <select id="closed-owner-filter" onchange="handleClosedOwnerFilterChange()"><option value="all">All owners</option></select>
     </div>
     <div class="revenue-closed-list" id="closed2026-list"></div>
   </div>
@@ -271,6 +289,7 @@ let SHEET_ID = '1xgeVnACB4gnFdn8jQ_FF4VeG6LvwjjC6eCxWdkWAN0U';
 let SHEET_GID = '0';
 let SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTiHgvFjI-o5E07MxYbzgQTcLTyxlzML4CkxTNHwBoFDcwfyrCWDNmi39iYBdpNM49H78M4WBJynGQT/pub?output=csv';
 let opps = [];
+let closed2026FilterMode = 'all';
 
 // ─── Stage color map ────────────────────────────────────────
 const STAGE_MAP = {
@@ -586,14 +605,31 @@ function populateOwners() {
 
 function populateClosedOwners() {
   const sel = document.getElementById('closed-owner-filter');
-  const current = sel.value;
-  sel.innerHTML = '<option value="all">All owners</option>';
+  const current = sel.value || closed2026FilterMode || 'all';
+  sel.innerHTML = '';
+  [
+    ['all', 'All owners'],
+    ['__newbiz__', 'New business only'],
+    ['__upsell__', 'Upsells only']
+  ].forEach(([value, label]) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    if (value === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
   [...new Set(opps.filter(o => isContract(o.stage) && parseModifiedDate(o.modified)?.getFullYear() === 2026).map(o=>o.owner).filter(x=>x&&x!=='—'))].sort().forEach(ow => {
     const opt = document.createElement('option');
     opt.value = ow; opt.textContent = ow;
     if (ow === current) opt.selected = true;
     sel.appendChild(opt);
   });
+  if (!Array.from(sel.options).some(opt => opt.value === current)) {
+    sel.value = 'all';
+    closed2026FilterMode = 'all';
+  } else {
+    sel.value = current;
+  }
 }
 
 function renderProb() {
@@ -639,11 +675,28 @@ function renderProb() {
 
 
 
+function handleClosedOwnerFilterChange() {
+  closed2026FilterMode = document.getElementById('closed-owner-filter').value || 'all';
+  renderClosed2026();
+}
+
+function openClosed2026View(mode) {
+  closed2026FilterMode = mode === 'newbiz' ? '__newbiz__' : '__upsell__';
+  populateClosedOwners();
+  document.getElementById('closed-owner-filter').value = closed2026FilterMode;
+  showTab('closed2026');
+  renderClosed2026();
+  document.getElementById('panel-closed2026').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function renderClosed2026() {
   const cont = document.getElementById('closed2026-list');
-  const owner = document.getElementById('closed-owner-filter').value;
+  const owner = document.getElementById('closed-owner-filter').value || closed2026FilterMode || 'all';
+  closed2026FilterMode = owner;
   let data = opps.filter(o => isContract(o.stage) && parseModifiedDate(o.modified)?.getFullYear() === 2026);
-  if (owner !== 'all') data = data.filter(o => o.owner === owner);
+  if (owner === '__newbiz__') data = data.filter(o => isNewBusinessOwner(o.owner));
+  else if (owner === '__upsell__') data = data.filter(o => !isNewBusinessOwner(o.owner));
+  else if (owner !== 'all') data = data.filter(o => o.owner === owner);
   data = data.sort((a,b) => (b.value || 0) - (a.value || 0));
 
   cont.innerHTML = '';
@@ -746,6 +799,12 @@ function showTab(name) {
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name).classList.add('active');
+  if (name !== 'closed2026') {
+    document.getElementById('mc-newbiz2026').classList.remove('active-filter');
+    document.getElementById('mc-upsell2026').classList.remove('active-filter');
+  } else {
+    renderClosed2026();
+  }
 }
 
 function showLoading() {
