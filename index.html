@@ -170,7 +170,8 @@
     <div class="mc"><div class="mc-lbl">Active pipeline</div><div class="mc-val" id="m-total">—</div><div class="mc-sub" id="m-sub">pre-contract opps</div></div>
     <div class="mc"><div class="mc-lbl">Weighted value</div><div class="mc-val" id="m-weighted">—</div><div class="mc-sub">by close probability</div></div>
     <div class="mc"><div class="mc-lbl">Revenue closed in 2026</div><div class="mc-val" id="m-closed2026">—</div><div class="mc-sub">contract signed · modified in 2026</div></div>
-    <div class="mc"><div class="mc-lbl">Contracted value</div><div class="mc-val" id="m-hot">—</div><div class="mc-sub">contract signed stage</div></div>
+    <div class="mc"><div class="mc-lbl">New Business Revenue 2026</div><div class="mc-val" id="m-newbiz2026">—</div><div class="mc-sub">Cameron Poolton + Veronique James</div></div>
+    <div class="mc"><div class="mc-lbl">Upsell Revenue 2026</div><div class="mc-val" id="m-upsell2026">—</div><div class="mc-sub">all other closed revenue in 2026</div></div>
   </div>
 
   <!-- Tabs -->
@@ -179,7 +180,7 @@
     <button class="tab" onclick="showTab('value')">By value</button>
     <button class="tab" onclick="showTab('probability')">By probability</button>
     <button class="tab" onclick="showTab('updated')">Last updated</button>
-    <button class="tab" onclick="showTab('closed2026')">REVENUE CLOSED IN 2026</button>
+    <button class="tab" onclick="showTab('closed2026')">Revenue closed in 2026</button>
   </div>
 
   <!-- Pipeline panel -->
@@ -473,20 +474,27 @@ function mapRows(rows) {
 }
 
 // ─── Metrics ─────────────────────────────────────────────────
+function isNewBusinessOwner(owner) {
+  const norm = String(owner || '').toLowerCase().replace(/[^a-z]/g, '');
+  return norm === 'cameronpoolton' || norm === 'cameronpolton' || norm === 'veroniquejames';
+}
+
 function renderMetrics() {
   const active = opps.filter(o => isActive(o.stage) || isHold(o.stage));
   const total = active.reduce((s,o) => s + (o.value || 0), 0);
   const weighted = active.reduce((s,o) => s + (o.value || 0) * (o.prob || 0) / 100, 0);
-  const hot = opps.filter(o => isContract(o.stage));
-  const hotVal = hot.reduce((s,o) => s + (o.value || 0), 0);
-  const closed2026 = hot.filter(o => {
+  const closed2026Opps = opps.filter(o => {
     const d = parseModifiedDate(o.modified);
-    return d && d.getFullYear() === 2026;
-  }).reduce((s,o) => s + (o.value || 0), 0);
+    return isContract(o.stage) && d && d.getFullYear() === 2026;
+  });
+  const closed2026 = closed2026Opps.reduce((s,o) => s + (o.value || 0), 0);
+  const newbiz2026 = closed2026Opps.filter(o => isNewBusinessOwner(o.owner)).reduce((s,o) => s + (o.value || 0), 0);
+  const upsell2026 = closed2026Opps.filter(o => !isNewBusinessOwner(o.owner)).reduce((s,o) => s + (o.value || 0), 0);
   document.getElementById('m-total').textContent = fmt(total);
   document.getElementById('m-weighted').textContent = fmt(weighted);
   document.getElementById('m-closed2026').textContent = fmt(closed2026);
-  document.getElementById('m-hot').textContent = fmt(hotVal);
+  document.getElementById('m-newbiz2026').textContent = fmt(newbiz2026);
+  document.getElementById('m-upsell2026').textContent = fmt(upsell2026);
   document.getElementById('opp-badge').textContent =
     active.length + ' active · ' + opps.filter(o=>isContract(o.stage)).length + ' contracted';
   document.getElementById('opp-badge').className = 'badge success';
