@@ -190,6 +190,9 @@
   .forecast-cell.end-month { border-radius: 0 4px 4px 0; }
   .forecast-section-header { font-size: 12px; font-weight: 700; color: var(--text); margin: 18px 0 10px; padding-bottom: 8px; border-bottom: 0.5px solid var(--border); }
   .forecast-empty { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 13px; }
+  .prob-toggle { display: flex; gap: 4px; }
+  .prob-toggle button { font-size: 11px; padding: 4px 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--surface); color: var(--text2); cursor: pointer; font-family: var(--font); }
+  .prob-toggle button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
 </style>
 </head>
 <body>
@@ -317,17 +320,11 @@
         <option value="50">50%+</option>
         <option value="70">70%+</option>
       </select>
-      <label>Service:</label>
-      <select id="forecast-svc-filter" onchange="renderForecast()">
-        <option value="all">All services (total)</option>
-        <option value="svc_creative">Creative</option>
-        <option value="svc_photovideo">Photo / Video</option>
-        <option value="svc_organicsocial">Organic Social</option>
-        <option value="svc_paidmedia">Paid Media</option>
-        <option value="svc_pr">PR</option>
-        <option value="svc_web">Web</option>
-        <option value="svc_clientsvc">Client Services</option>
-      </select>
+      <label>Value shown:</label>
+      <div class="prob-toggle">
+        <button id="toggle-full" class="active" onclick="setForecastMode('full')">Full value</button>
+        <button id="toggle-weighted" onclick="setForecastMode('weighted')">Weighted</button>
+      </div>
     </div>
     <div class="forecast-summary">
       <div class="mc"><div class="mc-lbl">Next 3 months</div><div class="mc-val" id="fc-3mo">—</div><div class="mc-sub">projected revenue</div></div>
@@ -551,13 +548,6 @@ function mapRows(rows) {
     modified: findField(r, keys, ['Last_Modified_Date','Last Modified','Modified Date','Modified','updated','last update','last activity']) || '—',
     close:  findField(r, keys, ['Forecasted_Close_Date','close','date','expected','due','target','close date']) || '—',
     months: parseFloat((findField(r, keys, ['Months','duration','length','contract months','project months']) || '0').replace(/[^0-9.-]/g,'')) || 0,
-    svc_creative:      parseFloat((r['Calc_Column_1'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
-    svc_photovideo:    parseFloat((r['Calc_Column_2'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
-    svc_organicsocial: parseFloat((r['Calc_Column_3'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
-    svc_paidmedia:     parseFloat((r['Calc_Column_4'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
-    svc_pr:            parseFloat((r['Calc_Column_5'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
-    svc_web:           parseFloat((r['Calc_Column_6'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
-    svc_clientsvc:     parseFloat((r['Calc_Column_7'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
   })).filter(r => r.client !== '—' || r.name !== '—');
 }
 
@@ -896,192 +886,16 @@ function showError(title, body) {
 }
 
 // ─── Forecast ─────────────────────────────────────────────────
-const SVC_LABELS = {
-  all:              'All services',
-  svc_creative:     'Creative',
-  svc_photovideo:   'Photo / Video',
-  svc_organicsocial:'Organic Social',
-  svc_paidmedia:    'Paid Media',
-  svc_pr:           'PR',
-  svc_web:          'Web',
-  svc_clientsvc:    'Client Services',
-};
+let forecastMode = 'full'; // 'full' or 'weighted'
 
-// Service colors for the Gantt bars
-const SVC_COLORS = {
-  all:              { r: 24,  g: 95,  b: 165 },  // blue
-  svc_creative:     { r: 83,  g: 74,  b: 183 },  // purple
-  svc_photovideo:   { r: 153, g: 53,  b: 86  },  // coral
-  svc_organicsocial:{ r: 29,  g: 158, b: 117 },  // green
-  svc_paidmedia:    { r: 186, g: 117, b: 23  },  // amber
-  svc_pr:           { r: 168, g: 45,  b: 45  },  // red
-  svc_web:          { r: 15,  g: 110, b: 86  },  // teal
-  svc_clientsvc:    { r: 136, g: 135, b: 128 },  // gray
-};
+function setForecastMode(mode) {
+  forecastMode = mode;
+  document.getElementById('toggle-full').classList.toggle('active', mode === 'full');
+  document.getElementById('toggle-weighted').classList.toggle('active', mode === 'weighted');
+  renderForecast();
+}
 
 function parseCloseDate(val) {
-  if (!val || val === '—') return null;
-  const num = parseFloat(val);
-  if (!isNaN(num) && num > 40000 && num < 60000) {
-    const d = new Date(Date.UTC(1899, 11, 30) + num * 86400000);
-    if (!isNaN(d.getTime())) return d;
-  }
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-function renderForecast() {
-  const stageView = document.getElementById('forecast-stage-filter').value;
-  const minProb   = parseInt(document.getElementById('forecast-prob-filter').value) || 0;
-  const svcKey    = document.getElementById('forecast-svc-filter').value;
-  const col       = SVC_COLORS[svcKey] || SVC_COLORS.all;
-
-  // Filter opps
-  let data = opps.filter(o => {
-    if (isDead(o.stage)) return false;
-    if (stageView === 'active' && !isActive(o.stage)) return false;
-    if (stageView === 'contract' && !isContract(o.stage)) return false;
-    if ((o.prob || 0) < minProb) return false;
-    const closeDate = parseCloseDate(o.close);
-    if (!closeDate) return false;
-    const dur = o.months || 1;
-    if (dur <= 0) return false;
-    // For service filter, only include opps where that service has value
-    if (svcKey !== 'all' && !(o[svcKey] > 0)) return false;
-    return true;
-  });
-
-  const chart = document.getElementById('forecast-chart');
-  if (!data.length) {
-    chart.innerHTML = '<div class="forecast-empty">No opportunities with close dates and duration found. Check that your sheet has <strong>Forecasted_Close_Date</strong> and <strong>Months</strong> columns.</div>';
-    ['fc-3mo','fc-6mo','fc-12mo'].forEach(id => document.getElementById(id).textContent = '—');
-    return;
-  }
-
-  // Build 18-month window starting from current month
-  const now = new Date();
-  const windowStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const NUM_MONTHS = 18;
-  const months = Array.from({length: NUM_MONTHS}, (_, i) => {
-    const d = new Date(windowStart);
-    d.setMonth(d.getMonth() + i);
-    return d;
-  });
-
-  // Determine the value to use per opp based on service selection
-  function oppValue(o) {
-    if (svcKey === 'all') return o.value || 0;
-    return o[svcKey] || 0;
-  }
-
-  // For each opp, calc monthly revenue spread
-  // Revenue starts month AFTER close, runs for `months` duration
-  function oppSchedule(o) {
-    const closeDate = parseCloseDate(o.close);
-    if (!closeDate) return null;
-    const dur = Math.max(1, o.months || 1);
-    const totalVal = oppValue(o);
-    const monthlyVal = totalVal / dur;
-    const startMonth = new Date(closeDate.getFullYear(), closeDate.getMonth() + 1, 1);
-    const endMonth   = new Date(startMonth);
-    endMonth.setMonth(endMonth.getMonth() + dur - 1);
-    return { startMonth, endMonth, monthlyVal, dur, totalVal };
-  }
-
-  // Sort by close date
-  data = data.sort((a,b) => (parseCloseDate(a.close)||0) - (parseCloseDate(b.close)||0));
-
-  // Compute totals per month
-  const monthTotals = months.map(m => {
-    let total = 0;
-    data.forEach(o => {
-      const s = oppSchedule(o);
-      if (!s) return;
-      if (m >= s.startMonth && m <= s.endMonth) total += s.monthlyVal;
-    });
-    return total;
-  });
-
-  // Summary metrics
-  document.getElementById('fc-3mo').textContent  = fmt(monthTotals.slice(0,3).reduce((a,b)=>a+b,0));
-  document.getElementById('fc-6mo').textContent  = fmt(monthTotals.slice(0,6).reduce((a,b)=>a+b,0));
-  document.getElementById('fc-12mo').textContent = fmt(monthTotals.slice(0,12).reduce((a,b)=>a+b,0));
-
-  const fmtMonth = d => d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-  const isCurrentMonth = d => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  const maxMonthVal = Math.max(...monthTotals, 1);
-
-  let html = '';
-
-  // Month header row
-  html += '<div style="display:flex;margin-bottom:6px;padding-left:200px;">';
-  months.forEach(m => {
-    const cur = isCurrentMonth(m);
-    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:10px;font-weight:${cur?700:600};color:${cur?'var(--blue-tc)':'var(--text2)'};text-transform:uppercase;letter-spacing:.04em;">${fmtMonth(m)}</div>`;
-  });
-  html += '</div>';
-
-  // Totals row
-  html += '<div style="display:flex;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:0.5px solid var(--border);">';
-  html += '<div style="width:200px;flex-shrink:0;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;padding-right:12px;">Monthly total</div>';
-  html += '<div style="display:flex;flex:1;">';
-  monthTotals.forEach(t => {
-    const style = t > 0 ? `color:rgba(${col.r},${col.g},${col.b},1);font-weight:700` : `color:var(--text3)`;
-    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:11px;${style}">${t > 0 ? fmt(t) : '—'}</div>`;
-  });
-  html += '</div></div>';
-
-  // Group by close month
-  const groups = new Map();
-  data.forEach(o => {
-    const cd = parseCloseDate(o.close);
-    if (!cd) return;
-    const key = `${cd.getFullYear()}-${String(cd.getMonth()+1).padStart(2,'0')}`;
-    const label = cd.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    if (!groups.has(key)) groups.set(key, { label, items: [] });
-    groups.get(key).items.push(o);
-  });
-
-  [...groups.entries()].sort((a,b) => a[0].localeCompare(b[0])).forEach(([, group]) => {
-    html += `<div class="forecast-section-header">Closing ${esc(group.label)}</div>`;
-    group.items.forEach(o => {
-      const s = oppSchedule(o);
-      if (!s) return;
-
-      html += '<div style="display:flex;align-items:center;margin-bottom:5px;">';
-      html += `<div style="width:200px;flex-shrink:0;padding-right:12px;overflow:hidden;">
-        <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(o.client)}">${esc(o.client)}</div>
-        <div style="font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(o.name)}</div>
-      </div>`;
-
-      html += '<div style="display:flex;flex:1;gap:2px;">';
-      months.forEach(m => {
-        const inRange = m >= s.startMonth && m <= s.endMonth;
-        const isFirst = m.getTime() === s.startMonth.getTime();
-        const isLast  = m.getTime() === s.endMonth.getTime();
-        const isCur   = isCurrentMonth(m);
-
-        if (inRange) {
-          const intensity = Math.max(0.18, Math.min(0.85, s.monthlyVal / (maxMonthVal / Math.max(data.length, 1) * 3 + 1)));
-          const alpha = intensity * 0.65 + 0.18;
-          const rr = isFirst && isLast ? '4px' : isFirst ? '4px 0 0 4px' : isLast ? '0 4px 4px 0' : '0';
-          const border = isCur ? `1.5px solid rgba(${col.r},${col.g},${col.b},0.9)` : '1.5px solid transparent';
-          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:${rr};background:rgba(${col.r},${col.g},${col.b},${alpha});border:${border};display:flex;align-items:center;justify-content:center;" title="${esc(o.client)}: ${fmt(s.monthlyVal)}/mo · ${o.months}mo duration">
-            <span style="font-size:9px;font-weight:600;color:#fff;">${s.monthlyVal >= 1000 ? fmt(s.monthlyVal) : ''}</span>
-          </div>`;
-        } else {
-          const border = isCur ? `1.5px solid var(--blue)` : 'none';
-          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:0;border:${border};"></div>`;
-        }
-      });
-      html += '</div></div>';
-    });
-  });
-
-  chart.innerHTML = html;
-}
-
-
   if (!val || val === '—') return null;
   // Handle Excel serial dates (numbers like 46142)
   const num = parseFloat(val);
