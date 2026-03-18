@@ -895,129 +895,99 @@ function showError(title, body) {
   document.getElementById('last-updated').textContent = 'Connection failed';
 }
 
-// ─── Forecast ─────────────────────────────────────────────────
-const SVC_LABELS = {
-  all:              'All services',
-  svc_creative:     'Creative',
-  svc_photovideo:   'Photo / Video',
-  svc_organicsocial:'Organic Social',
-  svc_paidmedia:    'Paid Media',
-  svc_pr:           'PR',
-  svc_web:          'Web',
-  svc_clientsvc:    'Client Services',
-};
 
-// Service colors for the Gantt bars
 const SVC_COLORS = {
-  all:              { r: 24,  g: 95,  b: 165 },  // blue
-  svc_creative:     { r: 83,  g: 74,  b: 183 },  // purple
-  svc_photovideo:   { r: 153, g: 53,  b: 86  },  // coral
-  svc_organicsocial:{ r: 29,  g: 158, b: 117 },  // green
-  svc_paidmedia:    { r: 186, g: 117, b: 23  },  // amber
-  svc_pr:           { r: 168, g: 45,  b: 45  },  // red
-  svc_web:          { r: 15,  g: 110, b: 86  },  // teal
-  svc_clientsvc:    { r: 136, g: 135, b: 128 },  // gray
+  all:               [24,  95,  165],
+  svc_creative:      [83,  74,  183],
+  svc_photovideo:    [153, 53,  86 ],
+  svc_organicsocial: [29,  158, 117],
+  svc_paidmedia:     [186, 117, 23 ],
+  svc_pr:            [168, 45,  45 ],
+  svc_web:           [15,  110, 86 ],
+  svc_clientsvc:     [136, 135, 128],
 };
-
-function parseCloseDate(val) {
-  if (!val || val === '—') return null;
-  const num = parseFloat(val);
-  if (!isNaN(num) && num > 40000 && num < 60000) {
-    const d = new Date(Date.UTC(1899, 11, 30) + num * 86400000);
-    if (!isNaN(d.getTime())) return d;
-  }
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? null : d;
-}
 
 function renderForecast() {
   const stageView = document.getElementById('forecast-stage-filter').value;
   const minProb   = parseInt(document.getElementById('forecast-prob-filter').value) || 0;
   const svcKey    = document.getElementById('forecast-svc-filter').value;
-  const col       = SVC_COLORS[svcKey] || SVC_COLORS.all;
+  const rgb       = SVC_COLORS[svcKey] || SVC_COLORS.all;
+
+  // Determine value for an opp based on service selection
+  function oppVal(o) {
+    return svcKey === 'all' ? (o.value || 0) : (o[svcKey] || 0);
+  }
 
   // Filter opps
   let data = opps.filter(o => {
     if (isDead(o.stage)) return false;
     if (stageView === 'active' && !isActive(o.stage)) return false;
     if (stageView === 'contract' && !isContract(o.stage)) return false;
+    if (stageView === 'all' && isDead(o.stage)) return false;
     if ((o.prob || 0) < minProb) return false;
+    if (oppVal(o) <= 0) return false;
     const closeDate = parseCloseDate(o.close);
     if (!closeDate) return false;
-    const dur = o.months || 1;
-    if (dur <= 0) return false;
-    // For service filter, only include opps where that service has value
-    if (svcKey !== 'all' && !(o[svcKey] > 0)) return false;
-    return true;
+    return (o.months || 1) > 0;
   });
 
   const chart = document.getElementById('forecast-chart');
   if (!data.length) {
-    chart.innerHTML = '<div class="forecast-empty">No opportunities with close dates and duration found. Check that your sheet has <strong>Forecasted_Close_Date</strong> and <strong>Months</strong> columns.</div>';
-    ['fc-3mo','fc-6mo','fc-12mo'].forEach(id => document.getElementById(id).textContent = '—');
+    chart.innerHTML = '<div class="forecast-empty">No opportunities found for this filter combination.</div>';
+    ['fc-3mo','fc-6mo','fc-12mo'].forEach(id => { document.getElementById(id).textContent = '—'; });
     return;
   }
 
-  // Build 18-month window starting from current month
+  // Build 18-month window from current month
   const now = new Date();
   const windowStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const NUM_MONTHS = 18;
-  const months = Array.from({length: NUM_MONTHS}, (_, i) => {
+  const months = Array.from({length: 18}, (_, i) => {
     const d = new Date(windowStart);
     d.setMonth(d.getMonth() + i);
     return d;
   });
 
-  // Determine the value to use per opp based on service selection
-  function oppValue(o) {
-    if (svcKey === 'all') return o.value || 0;
-    return o[svcKey] || 0;
-  }
-
-  // For each opp, calc monthly revenue spread
-  // Revenue starts month AFTER close, runs for `months` duration
-  function oppSchedule(o) {
-    const closeDate = parseCloseDate(o.close);
-    if (!closeDate) return null;
+  // Schedule: starts month AFTER close, runs for `months` duration
+  function schedule(o) {
+    const cd = parseCloseDate(o.close);
+    if (!cd) return null;
     const dur = Math.max(1, o.months || 1);
-    const totalVal = oppValue(o);
-    const monthlyVal = totalVal / dur;
-    const startMonth = new Date(closeDate.getFullYear(), closeDate.getMonth() + 1, 1);
-    const endMonth   = new Date(startMonth);
-    endMonth.setMonth(endMonth.getMonth() + dur - 1);
-    return { startMonth, endMonth, monthlyVal, dur, totalVal };
+    const monthly = oppVal(o) / dur;
+    const start = new Date(cd.getFullYear(), cd.getMonth() + 1, 1);
+    const end   = new Date(start);
+    end.setMonth(end.getMonth() + dur - 1);
+    return { start, end, monthly, dur };
   }
 
   // Sort by close date
-  data = data.sort((a,b) => (parseCloseDate(a.close)||0) - (parseCloseDate(b.close)||0));
+  data.sort((a, b) => (parseCloseDate(a.close) || 0) - (parseCloseDate(b.close) || 0));
 
-  // Compute totals per month
-  const monthTotals = months.map(m => {
-    let total = 0;
+  // Monthly totals
+  const totals = months.map(m => {
+    let sum = 0;
     data.forEach(o => {
-      const s = oppSchedule(o);
-      if (!s) return;
-      if (m >= s.startMonth && m <= s.endMonth) total += s.monthlyVal;
+      const s = schedule(o);
+      if (s && m >= s.start && m <= s.end) sum += s.monthly;
     });
-    return total;
+    return sum;
   });
 
-  // Summary metrics
-  document.getElementById('fc-3mo').textContent  = fmt(monthTotals.slice(0,3).reduce((a,b)=>a+b,0));
-  document.getElementById('fc-6mo').textContent  = fmt(monthTotals.slice(0,6).reduce((a,b)=>a+b,0));
-  document.getElementById('fc-12mo').textContent = fmt(monthTotals.slice(0,12).reduce((a,b)=>a+b,0));
+  const maxTotal = Math.max(...totals, 1);
+  const fmtMo = d => d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  const isCurMo = d => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 
-  const fmtMonth = d => d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-  const isCurrentMonth = d => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  const maxMonthVal = Math.max(...monthTotals, 1);
+  // Summary cards
+  document.getElementById('fc-3mo').textContent  = fmt(totals.slice(0, 3).reduce((a, b) => a + b, 0));
+  document.getElementById('fc-6mo').textContent  = fmt(totals.slice(0, 6).reduce((a, b) => a + b, 0));
+  document.getElementById('fc-12mo').textContent = fmt(totals.slice(0, 12).reduce((a, b) => a + b, 0));
 
   let html = '';
 
-  // Month header row
+  // Header row
   html += '<div style="display:flex;margin-bottom:6px;padding-left:200px;">';
   months.forEach(m => {
-    const cur = isCurrentMonth(m);
-    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:10px;font-weight:${cur?700:600};color:${cur?'var(--blue-tc)':'var(--text2)'};text-transform:uppercase;letter-spacing:.04em;">${fmtMonth(m)}</div>`;
+    const cur = isCurMo(m);
+    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:10px;font-weight:${cur?700:600};color:${cur?'var(--blue-tc)':'var(--text2)'};text-transform:uppercase;letter-spacing:.04em;">${fmtMo(m)}</div>`;
   });
   html += '</div>';
 
@@ -1025,9 +995,9 @@ function renderForecast() {
   html += '<div style="display:flex;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:0.5px solid var(--border);">';
   html += '<div style="width:200px;flex-shrink:0;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;padding-right:12px;">Monthly total</div>';
   html += '<div style="display:flex;flex:1;">';
-  monthTotals.forEach(t => {
-    const style = t > 0 ? `color:rgba(${col.r},${col.g},${col.b},1);font-weight:700` : `color:var(--text3)`;
-    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:11px;${style}">${t > 0 ? fmt(t) : '—'}</div>`;
+  totals.forEach(t => {
+    const c = t > 0 ? `rgba(${rgb[0]},${rgb[1]},${rgb[2]},1)` : 'var(--text3)';
+    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:11px;font-weight:${t>0?700:400};color:${c};">${t > 0 ? fmt(t) : '—'}</div>`;
   });
   html += '</div></div>';
 
@@ -1042,10 +1012,10 @@ function renderForecast() {
     groups.get(key).items.push(o);
   });
 
-  [...groups.entries()].sort((a,b) => a[0].localeCompare(b[0])).forEach(([, group]) => {
+  [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([, group]) => {
     html += `<div class="forecast-section-header">Closing ${esc(group.label)}</div>`;
     group.items.forEach(o => {
-      const s = oppSchedule(o);
+      const s = schedule(o);
       if (!s) return;
 
       html += '<div style="display:flex;align-items:center;margin-bottom:5px;">';
@@ -1053,192 +1023,22 @@ function renderForecast() {
         <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(o.client)}">${esc(o.client)}</div>
         <div style="font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(o.name)}</div>
       </div>`;
-
       html += '<div style="display:flex;flex:1;gap:2px;">';
       months.forEach(m => {
-        const inRange = m >= s.startMonth && m <= s.endMonth;
-        const isFirst = m.getTime() === s.startMonth.getTime();
-        const isLast  = m.getTime() === s.endMonth.getTime();
-        const isCur   = isCurrentMonth(m);
-
+        const inRange = m >= s.start && m <= s.end;
+        const isFirst = m.getTime() === s.start.getTime();
+        const isLast  = m.getTime() === s.end.getTime();
+        const cur     = isCurMo(m);
         if (inRange) {
-          const intensity = Math.max(0.18, Math.min(0.85, s.monthlyVal / (maxMonthVal / Math.max(data.length, 1) * 3 + 1)));
+          const intensity = Math.max(0.18, Math.min(0.85, s.monthly / (maxTotal / Math.max(data.length, 1) * 3 + 1)));
           const alpha = intensity * 0.65 + 0.18;
-          const rr = isFirst && isLast ? '4px' : isFirst ? '4px 0 0 4px' : isLast ? '0 4px 4px 0' : '0';
-          const border = isCur ? `1.5px solid rgba(${col.r},${col.g},${col.b},0.9)` : '1.5px solid transparent';
-          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:${rr};background:rgba(${col.r},${col.g},${col.b},${alpha});border:${border};display:flex;align-items:center;justify-content:center;" title="${esc(o.client)}: ${fmt(s.monthlyVal)}/mo · ${o.months}mo duration">
-            <span style="font-size:9px;font-weight:600;color:#fff;">${s.monthlyVal >= 1000 ? fmt(s.monthlyVal) : ''}</span>
+          const rr = (isFirst && isLast) ? '4px' : isFirst ? '4px 0 0 4px' : isLast ? '0 4px 4px 0' : '0';
+          const border = cur ? `1.5px solid rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.9)` : '1.5px solid transparent';
+          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:${rr};background:rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha});border:${border};display:flex;align-items:center;justify-content:center;" title="${esc(o.client)}: ${fmt(s.monthly)}/mo, ${s.dur}mo">
+            <span style="font-size:9px;font-weight:600;color:#fff;">${s.monthly >= 1000 ? fmt(s.monthly) : ''}</span>
           </div>`;
         } else {
-          const border = isCur ? `1.5px solid var(--blue)` : 'none';
-          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:0;border:${border};"></div>`;
-        }
-      });
-      html += '</div></div>';
-    });
-  });
-
-  chart.innerHTML = html;
-}
-
-function renderForecast() {
-  const stageView = document.getElementById('forecast-stage-filter').value;
-  const minProb   = parseInt(document.getElementById('forecast-prob-filter').value) || 0;
-
-  // Filter opps
-  let data = opps.filter(o => {
-    if (isDead(o.stage)) return false;
-    if (stageView === 'active' && !isActive(o.stage)) return false;
-    if (stageView === 'contract' && !isContract(o.stage)) return false;
-    if (stageView === 'all' && isDead(o.stage)) return false;
-    if ((o.prob || 0) < minProb) return false;
-    if (!o.value || o.value <= 0) return false;
-    const closeDate = parseCloseDate(o.close);
-    if (!closeDate) return false;
-    const dur = o.months || 1;
-    return dur > 0;
-  });
-
-  const chart = document.getElementById('forecast-chart');
-  if (!data.length) {
-    chart.innerHTML = '<div class="forecast-empty">No opportunities with close dates and duration found. Check that your sheet has <strong>Forecasted_Close_Date</strong> and <strong>Months</strong> columns.</div>';
-    document.getElementById('fc-3mo').textContent = '—';
-    document.getElementById('fc-6mo').textContent = '—';
-    document.getElementById('fc-12mo').textContent = '—';
-    return;
-  }
-
-  // Build 18-month window starting from current month
-  const now = new Date();
-  const windowStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const NUM_MONTHS = 18;
-  const months = Array.from({length: NUM_MONTHS}, (_, i) => {
-    const d = new Date(windowStart);
-    d.setMonth(d.getMonth() + i);
-    return d;
-  });
-
-  // For each opp, determine which months it generates revenue
-  // Revenue starts the month AFTER close date, runs for `months` duration
-  // Monthly value = total value / months
-  function oppMonthlyRevenue(o) {
-    const closeDate = parseCloseDate(o.close);
-    if (!closeDate) return null;
-    const dur = Math.max(1, o.months || 1);
-    const monthlyVal = (o.value || 0) / dur;
-    const factor = forecastMode === 'weighted' ? (o.prob || 0) / 100 : 1;
-    // Start = month after close
-    const startMonth = new Date(closeDate.getFullYear(), closeDate.getMonth() + 1, 1);
-    const endMonth   = new Date(startMonth);
-    endMonth.setMonth(endMonth.getMonth() + dur - 1);
-    return { startMonth, endMonth, monthlyVal: monthlyVal * factor, closeDate, dur };
-  }
-
-  // Sort by close date
-  data = data.sort((a,b) => {
-    const da = parseCloseDate(a.close), db = parseCloseDate(b.close);
-    return (da||0) - (db||0);
-  });
-
-  // Compute totals per month
-  const monthTotals = months.map(m => {
-    let total = 0;
-    data.forEach(o => {
-      const r = oppMonthlyRevenue(o);
-      if (!r) return;
-      if (m >= r.startMonth && m <= r.endMonth) total += r.monthlyVal;
-    });
-    return total;
-  });
-
-  // Summary metrics
-  const now3  = months.slice(0, 3).reduce((s,_,i) => s + monthTotals[i], 0);
-  const now6  = months.slice(0, 6).reduce((s,_,i) => s + monthTotals[i], 0);
-  const now12 = months.slice(0, 12).reduce((s,_,i) => s + monthTotals[i], 0);
-  document.getElementById('fc-3mo').textContent  = fmt(now3);
-  document.getElementById('fc-6mo').textContent  = fmt(now6);
-  document.getElementById('fc-12mo').textContent = fmt(now12);
-
-  // Month label formatter
-  const fmtMonth = d => d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-  const isCurrentMonth = d => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-
-  // Color ramp for month cells based on value
-  const maxMonthVal = Math.max(...monthTotals, 1);
-  function cellStyle(val, isActive, prob) {
-    if (!isActive || val <= 0) return '';
-    const intensity = Math.max(0.12, Math.min(0.9, val / maxMonthVal));
-    // use blue ramp for active cells
-    return `background: rgba(24, 95, 165, ${intensity * 0.7 + 0.1}); color: #fff;`;
-  }
-
-  // Build HTML
-  let html = '';
-
-  // Month header row
-  html += '<div style="display:flex; margin-bottom:6px; padding-left:200px;">';
-  months.forEach(m => {
-    const cur = isCurrentMonth(m) ? ' style="color:var(--blue-tc);font-weight:700"' : '';
-    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;"${cur}>${fmtMonth(m)}</div>`;
-  });
-  html += '</div>';
-
-  // Totals row
-  html += '<div style="display:flex;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:0.5px solid var(--border);">';
-  html += '<div style="width:200px;flex-shrink:0;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;padding-right:12px;">Monthly total</div>';
-  html += '<div style="display:flex;flex:1;">';
-  monthTotals.forEach(t => {
-    const style = t > 0 ? `color:var(--blue-tc);font-weight:700` : `color:var(--text3)`;
-    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:11px;${style}">${t > 0 ? fmt(t) : '—'}</div>`;
-  });
-  html += '</div></div>';
-
-  // Group opps by close month for readability
-  const groups = new Map();
-  data.forEach(o => {
-    const closeDate = parseCloseDate(o.close);
-    if (!closeDate) return;
-    const key = `${closeDate.getFullYear()}-${String(closeDate.getMonth()+1).padStart(2,'0')}`;
-    const label = closeDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    if (!groups.has(key)) groups.set(key, { label, items: [] });
-    groups.get(key).items.push(o);
-  });
-
-  // Render each group
-  [...groups.entries()].sort((a,b) => a[0].localeCompare(b[0])).forEach(([, group]) => {
-    html += `<div class="forecast-section-header">Closing ${esc(group.label)}</div>`;
-
-    group.items.forEach(o => {
-      const r = oppMonthlyRevenue(o);
-      if (!r) return;
-      const p = pColor(o.prob);
-
-      html += '<div style="display:flex;align-items:center;margin-bottom:5px;">';
-      // Label
-      html += `<div style="width:200px;flex-shrink:0;padding-right:12px;overflow:hidden;">
-        <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(o.client)}">${esc(o.client)}</div>
-        <div style="font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(o.name)}</div>
-      </div>`;
-
-      // Cells
-      html += '<div style="display:flex;flex:1;gap:2px;">';
-      months.forEach((m, mi) => {
-        const inRange = m >= r.startMonth && m <= r.endMonth;
-        const isFirst = m.getTime() === r.startMonth.getTime();
-        const isLast  = m.getTime() === r.endMonth.getTime();
-        const isCur   = isCurrentMonth(m);
-
-        if (inRange) {
-          const monthVal = r.monthlyVal;
-          const intensity = Math.max(0.15, Math.min(0.85, monthVal / (maxMonthVal / data.length * 3 + 1)));
-          const rr = isFirst ? '4px 0 0 4px' : isLast ? '0 4px 4px 0' : '0';
-          const border = isCur ? '1.5px solid var(--blue)' : '1.5px solid transparent';
-          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:${rr};background:rgba(24,95,165,${intensity * 0.6 + 0.15});border:${border};display:flex;align-items:center;justify-content:center;" title="${esc(o.client)}: ${fmt(monthVal)}/mo for ${o.months} mo">
-            <span style="font-size:9px;font-weight:600;color:#fff;">${monthVal >= 1000 ? fmt(monthVal) : ''}</span>
-          </div>`;
-        } else {
-          const border = isCur ? '1.5px solid var(--blue)' : 'none';
-          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:0;border:${border};"></div>`;
+          html += `<div style="flex:1;min-width:64px;height:28px;border:${cur ? '1.5px solid var(--blue)' : 'none'};"></div>`;
         }
       });
       html += '</div></div>';
