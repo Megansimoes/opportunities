@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opportunity Pipeline Dashboard</title>
+<style>
+  :root {
+    --bg: #f8f7f4;
+    --surface: #ffffff;
+    --surface2: #f2f0ec;
+    --border: rgba(0,0,0,0.1);
+    --border2: rgba(0,0,0,0.18);
+    --text: #1a1a18;
+    --text2: #6b6a63;
+    --text3: #9e9d96;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --green: #1D9E75; --green-bg: #E1F5EE; --green-tc: #085041;
+    --blue: #185FA5; --blue-bg: #E6F1FB; --blue-tc: #0C447C;
+    --amber: #BA7517; --amber-bg: #FAEEDA; --amber-tc: #633806;
+    --red: #A32D2D; --red-bg: #FCEBEB; --red-tc: #791F1F;
+    --purple: #534AB7; --purple-bg: #EEEDFE; --purple-tc: #3C3489;
+    --coral: #993556; --coral-bg: #FBEAF0; --coral-tc: #72243E;
+    --gray: #888780; --gray-bg: #F1EFE8; --gray-tc: #444441;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18; --surface: #242422; --surface2: #2e2e2b;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.18);
+      --text: #e8e6df; --text2: #a8a79f; --text3: #6b6a63;
+      --green-bg: #0a3326; --green-tc: #5ecfab;
+      --blue-bg: #0d2840; --blue-tc: #6aaee8;
+      --amber-bg: #2e1e05; --amber-tc: #e8b96a;
+      --red-bg: #2e0f0f; --red-tc: #e87474;
+      --purple-bg: #1c1850; --purple-tc: #a09af5;
+      --coral-bg: #2e0f1e; --coral-tc: #e8739a;
+      --gray-bg: #2a2a27; --gray-tc: #c0bfb7;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Layout */
+  .app { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+  .topbar-left h1 { font-size: 22px; font-weight: 600; color: var(--text); letter-spacing: -.3px; }
+  .topbar-left p { font-size: 13px; color: var(--text2); margin-top: 3px; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .badge { font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 20px; background: var(--blue-bg); color: var(--blue-tc); border: 0.5px solid var(--blue); white-space: nowrap; }
+  .badge.success { background: var(--green-bg); color: var(--green-tc); border-color: var(--green); }
+  .badge.warning { background: var(--amber-bg); color: var(--amber-tc); border-color: var(--amber); }
+  .btn { font-size: 12px; padding: 6px 14px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--surface); color: var(--text); cursor: pointer; font-family: var(--font); transition: background .15s; }
+  .btn:hover { background: var(--surface2); }
+  .btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .btn-primary:hover { opacity: .85; }
+
+  /* Sheets config banner */
+  .config-banner { background: var(--amber-bg); border: 1px solid var(--amber); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .config-banner p { font-size: 13px; color: var(--amber-tc); flex: 1; min-width: 200px; }
+  .config-banner input { font-size: 12px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--amber); background: var(--surface); color: var(--text); font-family: var(--font); flex: 2; min-width: 200px; }
+  .config-banner.hidden { display: none; }
+
+  /* Metrics */
+  .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 800px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .metrics { grid-template-columns: 1fr; } }
+  .mc { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .mc-lbl { font-size: 11px; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .mc-val { font-size: 26px; font-weight: 600; color: var(--text); line-height: 1; }
+  .mc-sub { font-size: 11px; color: var(--text3); margin-top: 5px; }
+  .mc.clickable { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+  .mc.clickable:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.08); border-color: var(--border2); }
+  .mc.clickable:active { transform: translateY(0); }
+  .mc.active-filter { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
+
+  /* Tabs */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { padding: 9px 16px; font-size: 13px; font-family: var(--font); color: var(--text2); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); font-weight: 500; border-bottom-color: var(--text); }
+
+  /* Panel */
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-row label { font-size: 12px; color: var(--text2); }
+  .filter-row select { font-size: 12px; padding: 5px 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--surface); color: var(--text); font-family: var(--font); cursor: pointer; }
+
+  /* Pipeline */
+  .pipe { display: grid; gap: 10px; }
+  @media (max-width: 900px) { .pipe { grid-template-columns: 1fr !important; } }
+  @media (max-width: 640px) {
+    .app { padding: 16px 12px; }
+    .topbar-right { width: 100%; justify-content: space-between; }
+    .tab { white-space: nowrap; padding: 10px 14px; }
+    .filter-row { gap: 8px; }
+    .filter-row label { width: 100%; }
+    .filter-row select { width: 100%; min-height: 40px; }
+    .pcard { padding: 12px; }
+    .ppct { font-size: 18px; }
+    .pclient { font-size: 13px; }
+    .pname { font-size: 12px; }
+  }
+  .scol { display: flex; flex-direction: column; gap: 8px; }
+  .shdr { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: var(--radius) var(--radius) 0 0; margin-bottom: 8px; }
+  .sname { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scnt { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 10px; background: rgba(0,0,0,.1); flex-shrink: 0; margin-left: 4px; }
+
+  /* Value bars */
+  .bar-row { display: grid; grid-template-columns: minmax(0, 33%) minmax(0, 57%) auto; align-items: center; gap: 14px; margin-bottom: 12px; cursor: pointer; padding: 2px 0; border-radius: var(--radius-sm); transition: background .1s; width: 100%; }
+  .bar-row:hover { background: var(--surface2); }
+  .bar-main { min-width: 0; }
+  .bar-info { min-width: 0; }
+  .bar-lbl { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.25; white-space: normal; overflow: visible; text-overflow: clip; }
+  .bar-meta { font-size: 12px; font-weight: 400; color: var(--text); line-height: 1.25; margin-top: 2px; white-space: normal; overflow: visible; text-overflow: clip; }
+  .bar-track { width: 100%; min-width: 0; background: transparent; border-radius: 6px; height: 32px; overflow: visible; }
+  .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding: 0 12px; min-width: 78px; }
+  .bar-amt { font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .bar-stg { font-size: 10px; padding: 4px 9px; border-radius: 999px; flex-shrink: 0; font-weight: 600; justify-self: end; }
+  @media (max-width: 900px) {
+    .bar-row { grid-template-columns: 1fr; gap: 10px; }
+    .bar-stg { justify-self: start; }
+  }
+
+  /* Probability */
+  .pgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 900px) { .pgrid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .pgrid { grid-template-columns: 1fr; } }
+  .pcard { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 14px; cursor: pointer; transition: box-shadow .15s; margin-bottom: 0; }
+  .pcard:hover { box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+  .pcard-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .pclient { font-size: 12px; font-weight: 600; color: var(--text); }
+  .pname { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .ppct { font-size: 22px; font-weight: 700; line-height: 1; flex-shrink: 0; margin-left: 8px; }
+  .pbar-t { background: var(--surface2); border-radius: 4px; height: 4px; margin-bottom: 8px; overflow: hidden; }
+  .pbar-f { height: 100%; border-radius: 4px; }
+  .pmeta { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); }
+
+
+  /* Last updated */
+  .updated-list { display: flex; flex-direction: column; gap: 18px; }
+  .updated-group { display: flex; flex-direction: column; gap: 10px; }
+  .updated-header { font-size: 13px; font-weight: 700; color: var(--text); padding-bottom: 8px; border-bottom: 0.5px solid var(--border); }
+  .updated-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 900px) { .updated-cards { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .updated-cards { grid-template-columns: 1fr; } }
+
+  /* Revenue closed */
+  .revenue-closed-list { display: flex; flex-direction: column; gap: 12px; }
+
+  /* Legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; padding-top: 16px; border-top: 0.5px solid var(--border); }
+  .li { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text2); }
+  .ld { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Loading / error */
+  .state-msg { text-align: center; padding: 60px 20px; color: var(--text2); }
+  .state-msg h3 { font-size: 16px; font-weight: 500; margin-bottom: 8px; color: var(--text); }
+  .state-msg p { font-size: 13px; line-height: 1.6; }
+  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--text2); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Footer */
+  .footer { margin-top: 32px; padding-top: 16px; border-top: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .footer p { font-size: 11px; color: var(--text3); }
+
+  /* Forecast */
+  .forecast-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 700px) { .forecast-summary { grid-template-columns: 1fr; } }
+  .forecast-chart-wrap { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 20px; overflow-x: auto; }
+  .forecast-month-headers { display: flex; margin-bottom: 6px; padding-left: 200px; }
+  .forecast-month-lbl { flex: 1; min-width: 64px; text-align: center; font-size: 10px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; }
+  .forecast-month-lbl.current-month { color: var(--blue-tc); }
+  .forecast-totals-row { display: flex; align-items: center; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 0.5px solid var(--border); }
+  .forecast-row-lbl { width: 200px; flex-shrink: 0; font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; padding-right: 12px; }
+  .forecast-totals-cells { display: flex; flex: 1; }
+  .forecast-total-cell { flex: 1; min-width: 64px; text-align: center; font-size: 11px; font-weight: 700; color: var(--text); }
+  .forecast-total-cell.has-value { color: var(--blue-tc); }
+  .forecast-opp-row { display: flex; align-items: center; margin-bottom: 5px; }
+  .forecast-opp-lbl { width: 200px; flex-shrink: 0; padding-right: 12px; }
+  .forecast-opp-client { font-size: 11px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .forecast-opp-name { font-size: 10px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .forecast-opp-cells { display: flex; flex: 1; gap: 2px; }
+  .forecast-cell { flex: 1; min-width: 64px; height: 28px; border-radius: 4px; }
+  .forecast-cell.active { display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; cursor: default; }
+  .forecast-cell.close-month { border-radius: 4px 0 0 4px; }
+  .forecast-cell.end-month { border-radius: 0 4px 4px 0; }
+  .forecast-section-header { font-size: 12px; font-weight: 700; color: var(--text); margin: 18px 0 10px; padding-bottom: 8px; border-bottom: 0.5px solid var(--border); }
+  .forecast-empty { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>Opportunity Pipeline</h1>
+      <p id="last-updated">Connecting to Google Sheets...</p>
+    </div>
+    <div class="topbar-right">
+      <span class="badge" id="opp-badge">Loading...</span>
+      <button class="btn" onclick="loadData()">↻ Refresh</button>
+          </div>
+  </div>
+
+  <!-- Metrics -->
+  <div class="metrics">
+    <div class="mc"><div class="mc-lbl">Active pipeline</div><div class="mc-val" id="m-total">—</div><div class="mc-sub" id="m-sub">pre-contract opps</div></div>
+    <div class="mc"><div class="mc-lbl">Weighted value</div><div class="mc-val" id="m-weighted">—</div><div class="mc-sub">by close probability</div></div>
+    <div class="mc"><div class="mc-lbl">Revenue closed in 2026</div><div class="mc-val" id="m-closed2026">—</div><div class="mc-sub">contract signed · modified in 2026</div></div>
+    <div class="mc clickable" id="mc-newbiz2026" onclick="openClosed2026View('newbiz')"><div class="mc-lbl">New Business Revenue 2026</div><div class="mc-val" id="m-newbiz2026">—</div><div class="mc-sub">Cameron Poolton + Veronique James</div></div>
+    <div class="mc clickable" id="mc-upsell2026" onclick="openClosed2026View('upsell')"><div class="mc-lbl">Upsell Revenue 2026</div><div class="mc-val" id="m-upsell2026">—</div><div class="mc-sub">all other closed revenue in 2026</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('pipeline')">Pipeline by stage</button>
+    <button class="tab" onclick="showTab('value')">By value</button>
+    <button class="tab" onclick="showTab('probability')">By probability</button>
+    <button class="tab" onclick="showTab('updated')">Last updated</button>
+    <button class="tab" onclick="showTab('closed2026')">Revenue closed in 2026</button>
+    <button class="tab" onclick="showTab('forecast')">Revenue forecast</button>
+  </div>
+
+  <!-- Pipeline panel -->
+  <div class="panel active" id="panel-pipeline">
+    <div class="filter-row">
+      <label>View:</label>
+      <select id="stage-filter" onchange="renderPipeline()">
+        <option value="active">Active pipeline (pre-contract)</option>
+        <option value="contract">Contract signed</option>
+        <option value="hold">On hold</option>
+        <option value="all">All (excl. dead deals)</option>
+      </select>
+    </div>
+    <div class="pipe" id="pipeline-board">
+      <div class="state-msg"><div class="spinner"></div><h3>Loading data...</h3><p>Fetching from Google Sheets</p></div>
+    </div>
+  </div>
+
+  <!-- Value panel -->
+  <div class="panel" id="panel-value">
+    <div class="filter-row">
+      <label>Show:</label>
+      <select id="val-filter" onchange="renderValue()">
+        <option value="active">Active pipeline only</option>
+        <option value="all">All (excl. dead deals)</option>
+        <option value="contract">Contract signed</option>
+      </select>
+      <label>Min value:</label>
+      <select id="min-val" onchange="renderValue()">
+        <option value="0">All values</option>
+        <option value="10000">$10K+</option>
+        <option value="50000">$50K+</option>
+        <option value="100000">$100K+</option>
+        <option value="200000">$200K+</option>
+      </select>
+    </div>
+    <div id="value-bars"></div>
+  </div>
+
+  <!-- Probability panel -->
+  <div class="panel" id="panel-probability">
+    <div class="filter-row">
+      <label>Owner:</label>
+      <select id="owner-filter" onchange="renderProb()"><option value="all">All owners</option></select>
+      <label>Min value:</label>
+      <select id="prob-min-val" onchange="renderProb()">
+        <option value="0">All values</option>
+        <option value="10000">$10K+</option>
+        <option value="50000">$50K+</option>
+        <option value="100000">$100K+</option>
+      </select>
+      <label>Stage:</label>
+      <select id="prob-stage-filter" onchange="renderProb()">
+        <option value="noncontract">All except contract signed</option>
+        <option value="active">Active pipeline only</option>
+        <option value="all">All (excl. dead)</option>
+        <option value="contract">Contract signed</option>
+      </select>
+    </div>
+    <div class="pgrid" id="prob-grid"></div>
+    <div class="legend" id="prob-legend"></div>
+  </div>
+
+  <!-- Last updated panel -->
+  <div class="panel" id="panel-updated">
+    <div id="updated-list"></div>
+  </div>
+
+  <!-- Revenue closed in 2026 panel -->
+  <div class="panel" id="panel-closed2026">
+    <div class="filter-row">
+      <label>Owner:</label>
+      <select id="closed-owner-filter" onchange="handleClosedOwnerFilterChange()"><option value="all">All owners</option></select>
+    </div>
+    <div class="revenue-closed-list" id="closed2026-list"></div>
+  </div>
+
+  <!-- Forecast panel -->
+  <div class="panel" id="panel-forecast">
+    <div class="filter-row">
+      <label>Include:</label>
+      <select id="forecast-stage-filter" onchange="renderForecast()">
+        <option value="active">Active pipeline only</option>
+        <option value="all">All (incl. hold)</option>
+        <option value="contract">Contract signed only</option>
+      </select>
+      <label>Min probability:</label>
+      <select id="forecast-prob-filter" onchange="renderForecast()">
+        <option value="0">All probabilities</option>
+        <option value="30">30%+</option>
+        <option value="50">50%+</option>
+        <option value="70">70%+</option>
+      </select>
+      <label>Service:</label>
+      <select id="forecast-svc-filter" onchange="renderForecast()">
+        <option value="all">All services (total)</option>
+        <option value="svc_creative">Creative</option>
+        <option value="svc_photovideo">Photo / Video</option>
+        <option value="svc_organicsocial">Organic Social</option>
+        <option value="svc_paidmedia">Paid Media</option>
+        <option value="svc_pr">PR</option>
+        <option value="svc_web">Web</option>
+        <option value="svc_clientsvc">Client Services</option>
+      </select>
+    </div>
+    <div class="forecast-summary">
+      <div class="mc"><div class="mc-lbl">Next 3 months</div><div class="mc-val" id="fc-3mo">—</div><div class="mc-sub">projected revenue</div></div>
+      <div class="mc"><div class="mc-lbl">Next 6 months</div><div class="mc-val" id="fc-6mo">—</div><div class="mc-sub">projected revenue</div></div>
+      <div class="mc"><div class="mc-lbl">Next 12 months</div><div class="mc-val" id="fc-12mo">—</div><div class="mc-sub">projected revenue</div></div>
+    </div>
+    <div class="forecast-chart-wrap" id="forecast-chart"></div>
+  </div>
+
+  <div class="footer">
+    <p id="footer-txt">Data source: Google Sheets</p>
+    <p>Last refreshed: <span id="refresh-time">—</span></p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script>
+// ─── Configuration ─────────────────────────────────────────
+let SHEET_ID = '1xgeVnACB4gnFdn8jQ_FF4VeG6LvwjjC6eCxWdkWAN0U';
+let SHEET_GID = '0';
+let SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTiHgvFjI-o5E07MxYbzgQTcLTyxlzML4CkxTNHwBoFDcwfyrCWDNmi39iYBdpNM49H78M4WBJynGQT/pub?output=csv';
+let opps = [];
+let closed2026FilterMode = 'all';
+
+// ─── Stage color map ────────────────────────────────────────
+const STAGE_MAP = {
+  '01': { color:'#888780', bg:'var(--gray-bg)', tc:'var(--gray-tc)' },
+  '02': { color:'#185FA5', bg:'var(--blue-bg)', tc:'var(--blue-tc)' },
+  '03': { color:'#185FA5', bg:'var(--blue-bg)', tc:'var(--blue-tc)' },
+  '04': { color:'#534AB7', bg:'var(--purple-bg)', tc:'var(--purple-tc)' },
+  '05': { color:'#534AB7', bg:'var(--purple-bg)', tc:'var(--purple-tc)' },
+  '06': { color:'#BA7517', bg:'var(--amber-bg)', tc:'var(--amber-tc)' },
+  '07': { color:'#BA7517', bg:'var(--amber-bg)', tc:'var(--amber-tc)' },
+  '08': { color:'#1D9E75', bg:'var(--green-bg)', tc:'var(--green-tc)' },
+  '09': { color:'#1D9E75', bg:'var(--green-bg)', tc:'var(--green-tc)' },
+  '10': { color:'#993556', bg:'var(--coral-bg)', tc:'var(--coral-tc)' },
+  '11': { color:'#993556', bg:'var(--coral-bg)', tc:'var(--coral-tc)' },
+  '12': { color:'#534AB7', bg:'var(--purple-bg)', tc:'var(--purple-tc)' },
+  '13': { color:'#1D9E75', bg:'var(--green-bg)', tc:'var(--green-tc)' },
+  '14': { color:'#1D9E75', bg:'var(--green-bg)', tc:'var(--green-tc)' },
+  '15': { color:'#888780', bg:'var(--gray-bg)', tc:'var(--gray-tc)' },
+  '16': { color:'#A32D2D', bg:'var(--red-bg)', tc:'var(--red-tc)' },
+};
+
+function stColor(stage) {
+  const num = (stage || '').match(/^(\d+)/);
+  return STAGE_MAP[num ? num[1].padStart(2,'0') : '15'] || STAGE_MAP['15'];
+}
+
+function pColor(p) {
+  if (p >= 75) return { bar:'#1D9E75', text:'var(--green-tc)', bg:'var(--green-bg)' };
+  if (p >= 50) return { bar:'#185FA5', text:'var(--blue-tc)', bg:'var(--blue-bg)' };
+  if (p >= 30) return { bar:'#BA7517', text:'var(--amber-tc)', bg:'var(--amber-bg)' };
+  return { bar:'#A32D2D', text:'var(--red-tc)', bg:'var(--red-bg)' };
+}
+
+function fmt(v) {
+  if (!v && v !== 0) return '—';
+  if (v >= 1000000) return '$' + (v/1000000).toFixed(1) + 'M';
+  if (v >= 1000) return '$' + Math.round(v/1000) + 'K';
+  return '$' + Math.round(v);
+}
+
+function stageNum(s) { const m = (s||'').match(/^(\d+)/); return m ? parseInt(m[1]) : 99; }
+const isActive    = s => { const n = stageNum(s); return n >= 1 && n <= 13; };
+const isContract  = s => stageNum(s) === 14;
+const isHold      = s => stageNum(s) === 15;
+const isDead      = s => stageNum(s) === 16;
+const shortStage  = s => s.replace(/^\d+\.\s/,'').replace(/ \/ Move to Trash/,'').replace(/ \/ Contract Negotiations.*$/,'').split(' - ')[0];
+
+// ─── Sheet config helpers ───────────────────────────────────
+function extractSheetConfig(url) {
+  const raw = String(url || '').trim();
+  const gidMatch = raw.match(/[?&#]gid=([0-9]+)/);
+  const editIdMatch = raw.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  const pubIdMatch = raw.match(/spreadsheets\/d\/e\/([a-zA-Z0-9_-]+)/);
+  const isPublished = /\/pubhtml|\/pub(\?|$)/i.test(raw);
+  const isDirectCsv = /output=csv|format=csv/i.test(raw);
+
+  let normalizedUrl = raw;
+  if (isPublished && !isDirectCsv) {
+    const gid = gidMatch ? gidMatch[1] : '0';
+    const pubId = pubIdMatch ? pubIdMatch[1] : null;
+    if (pubId) normalizedUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
+  }
+
+  return {
+    id: editIdMatch ? editIdMatch[1] : '',
+    gid: gidMatch ? gidMatch[1] : '0',
+    raw: normalizedUrl,
+    isDirectCsv: isDirectCsv || isPublished
+  };
+}
+
+// ─── Data loading ────────────────────────────────────────────
+async function loadData() {
+  showLoading();
+
+  if (window.location.protocol === 'file:') {
+    showError(
+      'This file is being opened locally.',
+      'Google Sheets often will not load from a local <strong>file://</strong> page because of browser security rules. Open this HTML through a simple web server or hosting tool, then try again.'
+    );
+    return;
+  }
+
+  const urls = [];
+
+  if (SHEET_URL && /output=csv|format=csv/i.test(SHEET_URL)) {
+    urls.push(SHEET_URL);
+  }
+
+  urls.push(
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`,
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${SHEET_GID}`,
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=${SHEET_GID}&single=true&output=csv`
+  );
+
+  let text = null;
+  let lastError = null;
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const candidate = await res.text();
+      if (candidate && candidate.trim()) {
+        text = candidate;
+        break;
+      }
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  if (!text) {
+    showError(
+      'Could not load the Google Sheet.',
+      'Make sure the sheet is set to <strong>Anyone with the link can view</strong>. If it still fails, use <strong>File → Share → Publish to web</strong>, choose <strong>CSV</strong> for the correct tab, then update the default sheet URL in the code to that published CSV URL. Also confirm the <strong>gid</strong> in your pasted URL matches the tab you want.'
+    );
+    console.error('Google Sheet load failed:', lastError);
+    return;
+  }
+
+  const rows = parseCSV(text);
+  if (rows.length < 1) {
+    showError('Sheet appears empty.', 'Check that the sheet has data and the correct tab is active for this URL/gid.');
+    return;
+  }
+
+  opps = mapRows(rows);
+  if (!opps.length) {
+    showError('Data mapped to 0 records.', 'Columns may have unexpected names. Check the sheet headers match the export format in your sheet.');
+    console.warn('Headers found:', rows[0] ? Object.keys(rows[0]) : []);
+    return;
+  }
+
+  populateOwners();
+  renderAll();
+  document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString();
+  document.getElementById('last-updated').textContent = `Google Sheets · ${opps.length} records loaded`;
+  document.getElementById('footer-txt').textContent = `Sheet ID: ${SHEET_ID} · gid: ${SHEET_GID}`;
+  document.getElementById('opp-badge').textContent = `${opps.length} records loaded`;
+  document.getElementById('opp-badge').className = 'badge success';
+}
+
+function parseCSV(text) {
+  if (window.Papa) {
+    const parsed = Papa.parse(text, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: h => String(h || '').trim()
+    });
+    return (parsed.data || []).filter(r => Object.values(r).some(v => String(v || '').trim() !== ''));
+  }
+
+  const lines = text.trim().split(/\r?\n/);
+  if (!lines.length) return [];
+  const headers = splitCSVLine(lines[0]).map(h => h.replace(/^"|"$/g,'').trim());
+  return lines.slice(1).map(line => {
+    const vals = splitCSVLine(line).map(v => v.replace(/^"|"$/g,'').trim());
+    const row = {};
+    headers.forEach((h,i) => row[h] = vals[i] || '');
+    return row;
+  }).filter(r => Object.values(r).some(v => v));
+}
+
+function splitCSVLine(line) {
+  const vals = []; let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') { inQ = !inQ; continue; }
+    if (line[i] === ',' && !inQ) { vals.push(cur); cur = ''; continue; }
+    cur += line[i];
+  }
+  vals.push(cur);
+  return vals;
+}
+
+function findField(row, keys, candidates) {
+  for (const c of candidates) {
+    const k = keys.find(k => k.toLowerCase().includes(c.toLowerCase()));
+    if (k !== undefined && row[k] !== undefined && row[k] !== '') return row[k];
+  }
+  return null;
+}
+
+function mapRows(rows) {
+  if (!rows.length) return [];
+  const keys = Object.keys(rows[0]);
+  return rows.map(r => ({
+    client: findField(r, keys, ['Company_Name','client','company','account','firm','customer']) || '—',
+    name:   findField(r, keys, ['Opportunity_Name','opportunity','name','title','description','opp','project']) || '—',
+    value:  parseFloat((findField(r, keys, ['Sale_Amount','value','amount','revenue','budget','estimate','fee','total','$']) || '0').replace(/[^0-9.-]/g,'')),
+    prob:   parseFloat((findField(r, keys, ['Probability','prob','chance','likelihood','%','close prob']) || '0').replace(/[^0-9.-]/g,'')),
+    stage:  findField(r, keys, ['Lead_Stage','stage','status','phase','step','pipeline']) || 'Unknown',
+    owner:  findField(r, keys, ['Opportunity_Owner_Name','owner','assigned','rep','salesperson','user','account manager']) || '—',
+    modified: findField(r, keys, ['Last_Modified_Date','Last Modified','Modified Date','Modified','updated','last update','last activity']) || '—',
+    close:  findField(r, keys, ['Forecasted_Close_Date','close','date','expected','due','target','close date']) || '—',
+    months: parseFloat((findField(r, keys, ['Months','duration','length','contract months','project months']) || '0').replace(/[^0-9.-]/g,'')) || 0,
+    svc_creative:      parseFloat((r['Calc_Column_1'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_photovideo:    parseFloat((r['Calc_Column_2'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_organicsocial: parseFloat((r['Calc_Column_3'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_paidmedia:     parseFloat((r['Calc_Column_4'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_pr:            parseFloat((r['Calc_Column_5'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_web:           parseFloat((r['Calc_Column_6'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+    svc_clientsvc:     parseFloat((r['Calc_Column_7'] || '0').toString().replace(/[^0-9.-]/g,'')) || 0,
+  })).filter(r => r.client !== '—' || r.name !== '—');
+}
+
+// ─── Metrics ─────────────────────────────────────────────────
+function isNewBusinessOwner(owner) {
+  const norm = String(owner || '').toLowerCase().replace(/[^a-z]/g, '');
+  return norm === 'cameronpoolton' || norm === 'cameronpolton' || norm === 'veroniquejames';
+}
+
+function renderMetrics() {
+  const active = opps.filter(o => isActive(o.stage) || isHold(o.stage));
+  const total = active.reduce((s,o) => s + (o.value || 0), 0);
+  const weighted = active.reduce((s,o) => s + (o.value || 0) * (o.prob || 0) / 100, 0);
+  const closed2026Opps = opps.filter(o => {
+    const d = parseModifiedDate(o.modified);
+    return isContract(o.stage) && d && d.getFullYear() === 2026;
+  });
+  const closed2026 = closed2026Opps.reduce((s,o) => s + (o.value || 0), 0);
+  const newbiz2026 = closed2026Opps.filter(o => isNewBusinessOwner(o.owner)).reduce((s,o) => s + (o.value || 0), 0);
+  const upsell2026 = closed2026Opps.filter(o => !isNewBusinessOwner(o.owner)).reduce((s,o) => s + (o.value || 0), 0);
+  document.getElementById('m-total').textContent = fmt(total);
+  document.getElementById('m-weighted').textContent = fmt(weighted);
+  document.getElementById('m-closed2026').textContent = fmt(closed2026);
+  document.getElementById('m-newbiz2026').textContent = fmt(newbiz2026);
+  document.getElementById('m-upsell2026').textContent = fmt(upsell2026);
+  document.getElementById('opp-badge').textContent =
+    active.length + ' active · ' + opps.filter(o=>isContract(o.stage)).length + ' contracted';
+  document.getElementById('opp-badge').className = 'badge success';
+}
+
+// ─── Pipeline ─────────────────────────────────────────────────
+function filterOpps(view) {
+  if (view === 'active')   return opps.filter(o => isActive(o.stage));
+  if (view === 'contract') return opps.filter(o => isContract(o.stage));
+  if (view === 'hold')     return opps.filter(o => isHold(o.stage));
+  return opps.filter(o => !isDead(o.stage));
+}
+
+function renderPipeline() {
+  const view = document.getElementById('stage-filter').value;
+  const data = filterOpps(view);
+  if (!data.length) { document.getElementById('pipeline-board').innerHTML = '<div class="state-msg"><h3>No opportunities</h3><p>Try changing the filter above.</p></div>'; return; }
+
+  const stageNames = [...new Set(data.map(o=>o.stage))].sort((a,b) => stageNum(a)-stageNum(b));
+  const board = document.getElementById('pipeline-board');
+  const cols = Math.min(stageNames.length, 4);
+  board.style.gridTemplateColumns = `repeat(${cols}, minmax(0,1fr))`;
+  board.innerHTML = '';
+
+  stageNames.forEach(sn => {
+    const st = stColor(sn);
+    const items = data.filter(o=>o.stage===sn).sort((a,b)=>(b.prob||0)-(a.prob||0));
+    const col = document.createElement('div');
+    col.className = 'scol';
+    col.innerHTML = `<div class="shdr" style="background:${st.bg};border:0.5px solid ${st.color}44">
+      <span class="sname" style="color:${st.tc}">${shortStage(sn)}</span>
+      <span class="scnt" style="color:${st.tc}">${items.length}</span>
+    </div>`;
+    items.forEach(o => {
+      const p = pColor(o.prob);
+      const card = document.createElement('div');
+      card.className = 'pcard';
+      card.innerHTML = `<div class="pcard-top">
+        <div><div class="pclient">${esc(o.client)}</div><div class="pname">${esc(o.name)}</div></div>
+        <div class="ppct" style="color:${p.bar}">${o.prob ? Math.round(o.prob) + '%' : '—'}</div>
+      </div>
+      <div class="pbar-t"><div class="pbar-f" style="width:${Math.max(0, Math.min(100, o.prob || 0))}%;background:${p.bar}"></div></div>
+      <div class="pmeta"><span>${fmt(o.value)}</span><span>${shortStage(o.stage)}</span></div>
+      <div class="pmeta"><span>Owner: ${esc(o.owner || '—')}</span><span>Modified: ${esc(fmtDate(o.modified))}</span></div>`;
+      col.appendChild(card);
+    });
+    board.appendChild(col);
+  });
+}
+
+// ─── Value bars ───────────────────────────────────────────────
+function renderValue() {
+  const view   = document.getElementById('val-filter').value;
+  const minVal = parseInt(document.getElementById('min-val').value);
+  const data   = filterOpps(view).filter(o=>o.value>=minVal).sort((a,b)=>b.value-a.value).slice(0,40);
+  const maxV   = data[0]?.value || 1;
+  const cont   = document.getElementById('value-bars');
+  cont.innerHTML = '';
+  if (!data.length) { cont.innerHTML = '<div class="state-msg"><h3>No results</h3><p>Try lowering the minimum value filter.</p></div>'; return; }
+  data.forEach(o => {
+    const st = stColor(o.stage);
+    const pct = Math.max(4, o.value / maxV * 100).toFixed(1);
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `<div class="bar-main"><div class="bar-info"><div class="bar-lbl" title="${esc(o.client)}">${esc(o.client)}</div><div class="bar-meta">${esc(o.name)}</div></div></div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pct}%;background:${st.bg};border:0.5px solid ${st.color}44">
+          <span class="bar-amt" style="color:${st.tc}">${fmt(o.value)}</span>
+        </div>
+      </div>
+      <span class="bar-stg" style="background:${st.bg};color:${st.tc};border:0.5px solid ${st.color}44">${shortStage(o.stage)}</span>`;
+    cont.appendChild(row);
+  });
+}
+
+// ─── Probability grid ─────────────────────────────────────────
+function populateOwners() {
+  const sel = document.getElementById('owner-filter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="all">All owners</option>';
+  [...new Set(opps.map(o=>o.owner).filter(x=>x&&x!=='—'))].sort().forEach(ow => {
+    const opt = document.createElement('option');
+    opt.value = ow; opt.textContent = ow;
+    if (ow === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+
+function populateClosedOwners() {
+  const sel = document.getElementById('closed-owner-filter');
+  const current = sel.value || closed2026FilterMode || 'all';
+  sel.innerHTML = '';
+  [
+    ['all', 'All owners'],
+    ['__newbiz__', 'New business only'],
+    ['__upsell__', 'Upsells only']
+  ].forEach(([value, label]) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    if (value === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  [...new Set(opps.filter(o => isContract(o.stage) && parseModifiedDate(o.modified)?.getFullYear() === 2026).map(o=>o.owner).filter(x=>x&&x!=='—'))].sort().forEach(ow => {
+    const opt = document.createElement('option');
+    opt.value = ow; opt.textContent = ow;
+    if (ow === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  if (!Array.from(sel.options).some(opt => opt.value === current)) {
+    sel.value = 'all';
+    closed2026FilterMode = 'all';
+  } else {
+    sel.value = current;
+  }
+}
+
+function renderProb() {
+  const owner   = document.getElementById('owner-filter').value;
+  const minVal  = parseInt(document.getElementById('prob-min-val').value);
+  const stView  = document.getElementById('prob-stage-filter').value;
+  let data = opps.filter(o => {
+    if (isDead(o.stage)) return false;
+    if (stView === 'noncontract' && isContract(o.stage)) return false;
+    if (stView === 'active' && (!isActive(o.stage) || isContract(o.stage))) return false;
+    if (stView === 'contract' && !isContract(o.stage)) return false;
+    return o.value >= minVal && o.prob > 0;
+  });
+  if (owner !== 'all') data = data.filter(o => o.owner === owner);
+  data = data.sort((a,b) => b.prob - a.prob);
+
+  const pg = document.getElementById('prob-grid');
+  pg.innerHTML = '';
+  if (!data.length) { pg.innerHTML = '<div class="state-msg" style="grid-column:1/-1"><h3>No results</h3><p>Try adjusting the filters above.</p></div>'; return; }
+
+  data.forEach(o => {
+    const p = pColor(o.prob);
+    const card = document.createElement('div');
+    card.className = 'pcard';
+    card.innerHTML = `<div class="pcard-top">
+      <div><div class="pclient">${esc(o.client)}</div><div class="pname">${esc(o.name)}</div></div>
+      <div class="ppct" style="color:${p.bar}">${Math.round(o.prob)}%</div>
+    </div>
+    <div class="pbar-t"><div class="pbar-f" style="width:${o.prob}%;background:${p.bar}"></div></div>
+    <div class="pmeta"><span>${fmt(o.value)}</span><span>${shortStage(o.stage)}</span></div>
+    <div class="pmeta"><span>Owner: ${esc(o.owner || '—')}</span><span>Modified: ${esc(fmtDate(o.modified))}</span></div>`;
+    pg.appendChild(card);
+  });
+
+  const leg = document.getElementById('prob-legend');
+  leg.innerHTML = '';
+  [{l:'High (≥75%)',c:'#1D9E75'},{l:'Medium (50–74%)',c:'#185FA5'},{l:'Low (30–49%)',c:'#BA7517'},{l:'At risk (<30%)',c:'#A32D2D'}].forEach(x => {
+    const i = document.createElement('div'); i.className = 'li';
+    i.innerHTML = `<span class="ld" style="background:${x.c}"></span>${x.l}`;
+    leg.appendChild(i);
+  });
+}
+
+
+
+function handleClosedOwnerFilterChange() {
+  closed2026FilterMode = document.getElementById('closed-owner-filter').value || 'all';
+  renderClosed2026();
+}
+
+function openClosed2026View(mode) {
+  closed2026FilterMode = mode === 'newbiz' ? '__newbiz__' : '__upsell__';
+  populateClosedOwners();
+  document.getElementById('closed-owner-filter').value = closed2026FilterMode;
+  showTab('closed2026');
+  renderClosed2026();
+  document.getElementById('panel-closed2026').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderClosed2026() {
+  const cont = document.getElementById('closed2026-list');
+  const owner = document.getElementById('closed-owner-filter').value || closed2026FilterMode || 'all';
+  closed2026FilterMode = owner;
+  let data = opps.filter(o => isContract(o.stage) && parseModifiedDate(o.modified)?.getFullYear() === 2026);
+  if (owner === '__newbiz__') data = data.filter(o => isNewBusinessOwner(o.owner));
+  else if (owner === '__upsell__') data = data.filter(o => !isNewBusinessOwner(o.owner));
+  else if (owner !== 'all') data = data.filter(o => o.owner === owner);
+  data = data.sort((a,b) => (b.value || 0) - (a.value || 0));
+
+  cont.innerHTML = '';
+  if (!data.length) {
+    cont.innerHTML = '<div class="state-msg"><h3>No closed revenue found</h3><p>Try a different owner filter.</p></div>';
+    return;
+  }
+
+  const maxV = data[0]?.value || 1;
+  data.forEach(o => {
+    const st = stColor(o.stage);
+    const pct = Math.max(4, ((o.value || 0) / maxV) * 100).toFixed(1);
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `<div class="bar-main"><div class="bar-info"><div class="bar-lbl" title="${esc(o.client)}">${esc(o.client)}</div><div class="bar-meta">${esc(o.name)}</div></div></div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pct}%;background:${st.bg};border:0.5px solid ${st.color}44">
+          <span class="bar-amt" style="color:${st.tc}">${fmt(o.value)}</span>
+        </div>
+      </div>
+      <span class="bar-stg" style="background:${st.bg};color:${st.tc};border:0.5px solid ${st.color}44">${esc(o.owner || '—')}</span>`;
+    cont.appendChild(row);
+  });
+}
+
+function renderUpdated() {
+  const cont = document.getElementById('updated-list');
+  cont.className = 'updated-list';
+  cont.innerHTML = '';
+
+  let data = opps.filter(o => !isDead(o.stage) && !isContract(o.stage) && parseModifiedDate(o.modified));
+  data = data.sort((a, b) => parseModifiedDate(b.modified) - parseModifiedDate(a.modified));
+
+  if (!data.length) {
+    cont.innerHTML = '<div class="state-msg"><h3>No modified dates found</h3><p>Add a modified date column in your sheet to use this view.</p></div>';
+    return;
+  }
+
+  const groups = new Map();
+  data.forEach(o => {
+    const key = fmtDate(o.modified);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o);
+  });
+
+  groups.forEach((items, label) => {
+    const group = document.createElement('div');
+    group.className = 'updated-group';
+
+    const header = document.createElement('div');
+    header.className = 'updated-header';
+    header.textContent = label;
+    group.appendChild(header);
+
+    const cards = document.createElement('div');
+    cards.className = 'updated-cards';
+
+    items.forEach(o => {
+      const p = pColor(o.prob);
+      const card = document.createElement('div');
+      card.className = 'pcard';
+      card.innerHTML = `<div class="pcard-top">
+        <div><div class="pclient">${esc(o.client)}</div><div class="pname">${esc(o.name)}</div></div>
+        <div class="ppct" style="color:${p.bar}">${o.prob ? Math.round(o.prob) + '%' : '—'}</div>
+      </div>
+      <div class="pbar-t"><div class="pbar-f" style="width:${Math.max(0, Math.min(100, o.prob || 0))}%;background:${p.bar}"></div></div>
+      <div class="pmeta"><span>${fmt(o.value)}</span><span>${shortStage(o.stage)}</span></div>
+      <div class="pmeta"><span>Owner: ${esc(o.owner || '—')}</span><span>Modified: ${esc(fmtDate(o.modified))}</span></div>`;
+      cards.appendChild(card);
+    });
+
+    group.appendChild(cards);
+    cont.appendChild(group);
+  });
+}
+
+
+// ─── Helpers ──────────────────────────────────────────────────
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+
+function fmtDate(value) {
+  if (!value || value === '—') return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
+}
+
+
+function parseModifiedDate(value) {
+  if (!value || value === '—') return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.getAttribute('onclick').includes(`'${name}'`));
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  if (name !== 'closed2026') {
+    document.getElementById('mc-newbiz2026').classList.remove('active-filter');
+    document.getElementById('mc-upsell2026').classList.remove('active-filter');
+  } else {
+    renderClosed2026();
+  }
+}
+
+function showLoading() {
+  document.getElementById('pipeline-board').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div><h3>Loading...</h3><p>Fetching from Google Sheets</p></div>';
+  document.getElementById('value-bars').innerHTML = '';
+  document.getElementById('prob-grid').innerHTML = '';
+  document.getElementById('updated-list').innerHTML = '';
+  document.getElementById('closed2026-list').innerHTML = '';
+  document.getElementById('opp-badge').textContent = 'Loading...';
+  document.getElementById('opp-badge').className = 'badge';
+}
+
+function showError(title, body) {
+  const html = `<div class="state-msg"><h3>${title}</h3><p>${body}</p><br><button class="btn" onclick="loadData()">↻ Try again</button></div>`;
+  document.getElementById('pipeline-board').innerHTML = html;
+  document.getElementById('opp-badge').textContent = 'Error';
+  document.getElementById('opp-badge').className = 'badge warning';
+  document.getElementById('last-updated').textContent = 'Connection failed';
+}
+
+
+// ─── Forecast ─────────────────────────────────────────────────
+function parseCloseDate(val) {
+  if (!val || val === '—') return null;
+  // Handle Excel serial dates (e.g. 46142)
+  const num = parseFloat(val);
+  if (!isNaN(num) && num > 40000 && num < 60000) {
+    const d = new Date(Date.UTC(1899, 11, 30) + num * 86400000);
+    if (!isNaN(d.getTime())) return d;
+  }
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+const SVC_COLORS = {
+  all:               [24,  95,  165],
+  svc_creative:      [83,  74,  183],
+  svc_photovideo:    [153, 53,  86 ],
+  svc_organicsocial: [29,  158, 117],
+  svc_paidmedia:     [186, 117, 23 ],
+  svc_pr:            [168, 45,  45 ],
+  svc_web:           [15,  110, 86 ],
+  svc_clientsvc:     [136, 135, 128],
+};
+
+function renderForecast() {
+  const stageView = document.getElementById('forecast-stage-filter').value;
+  const minProb   = parseInt(document.getElementById('forecast-prob-filter').value) || 0;
+  const svcKey    = document.getElementById('forecast-svc-filter').value;
+  const rgb       = SVC_COLORS[svcKey] || SVC_COLORS.all;
+
+  // Determine value for an opp based on service selection
+  function oppVal(o) {
+    return svcKey === 'all' ? (o.value || 0) : (o[svcKey] || 0);
+  }
+
+  // Filter opps
+  let data = opps.filter(o => {
+    if (isDead(o.stage)) return false;
+    if (stageView === 'active' && !isActive(o.stage)) return false;
+    if (stageView === 'contract' && !isContract(o.stage)) return false;
+    if (stageView === 'all' && isDead(o.stage)) return false;
+    if ((o.prob || 0) < minProb) return false;
+    if (oppVal(o) <= 0) return false;
+    const closeDate = parseCloseDate(o.close);
+    if (!closeDate) return false;
+    return (o.months || 1) > 0;
+  });
+
+  const chart = document.getElementById('forecast-chart');
+  if (!data.length) {
+    chart.innerHTML = '<div class="forecast-empty">No opportunities found for this filter combination.</div>';
+    ['fc-3mo','fc-6mo','fc-12mo'].forEach(id => { document.getElementById(id).textContent = '—'; });
+    return;
+  }
+
+  // Build 18-month window from current month
+  const now = new Date();
+  const windowStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const months = Array.from({length: 18}, (_, i) => {
+    const d = new Date(windowStart);
+    d.setMonth(d.getMonth() + i);
+    return d;
+  });
+
+  // Schedule: starts month AFTER close, runs for `months` duration
+  function schedule(o) {
+    const cd = parseCloseDate(o.close);
+    if (!cd) return null;
+    const dur = Math.max(1, o.months || 1);
+    const monthly = oppVal(o) / dur;
+    const start = new Date(cd.getFullYear(), cd.getMonth() + 1, 1);
+    const end   = new Date(start);
+    end.setMonth(end.getMonth() + dur - 1);
+    return { start, end, monthly, dur };
+  }
+
+  // Sort by close date
+  data.sort((a, b) => (parseCloseDate(a.close) || 0) - (parseCloseDate(b.close) || 0));
+
+  // Monthly totals
+  const totals = months.map(m => {
+    let sum = 0;
+    data.forEach(o => {
+      const s = schedule(o);
+      if (s && m >= s.start && m <= s.end) sum += s.monthly;
+    });
+    return sum;
+  });
+
+  const maxTotal = Math.max(...totals, 1);
+  const fmtMo = d => d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  const isCurMo = d => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+
+  // Summary cards
+  document.getElementById('fc-3mo').textContent  = fmt(totals.slice(0, 3).reduce((a, b) => a + b, 0));
+  document.getElementById('fc-6mo').textContent  = fmt(totals.slice(0, 6).reduce((a, b) => a + b, 0));
+  document.getElementById('fc-12mo').textContent = fmt(totals.slice(0, 12).reduce((a, b) => a + b, 0));
+
+  let html = '';
+
+  // Header row
+  html += '<div style="display:flex;margin-bottom:6px;padding-left:200px;">';
+  months.forEach(m => {
+    const cur = isCurMo(m);
+    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:10px;font-weight:${cur?700:600};color:${cur?'var(--blue-tc)':'var(--text2)'};text-transform:uppercase;letter-spacing:.04em;">${fmtMo(m)}</div>`;
+  });
+  html += '</div>';
+
+  // Totals row
+  html += '<div style="display:flex;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:0.5px solid var(--border);">';
+  html += '<div style="width:200px;flex-shrink:0;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;padding-right:12px;">Monthly total</div>';
+  html += '<div style="display:flex;flex:1;">';
+  totals.forEach(t => {
+    const c = t > 0 ? `rgba(${rgb[0]},${rgb[1]},${rgb[2]},1)` : 'var(--text3)';
+    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:11px;font-weight:${t>0?700:400};color:${c};">${t > 0 ? fmt(t) : '—'}</div>`;
+  });
+  html += '</div></div>';
+
+  // Group by close month
+  const groups = new Map();
+  data.forEach(o => {
+    const cd = parseCloseDate(o.close);
+    if (!cd) return;
+    const key = `${cd.getFullYear()}-${String(cd.getMonth()+1).padStart(2,'0')}`;
+    const label = cd.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    if (!groups.has(key)) groups.set(key, { label, items: [] });
+    groups.get(key).items.push(o);
+  });
+
+  [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([, group]) => {
+    html += `<div class="forecast-section-header">Closing ${esc(group.label)}</div>`;
+    group.items.forEach(o => {
+      const s = schedule(o);
+      if (!s) return;
+
+      html += '<div style="display:flex;align-items:center;margin-bottom:5px;">';
+      html += `<div style="width:200px;flex-shrink:0;padding-right:12px;overflow:hidden;">
+        <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(o.client)}">${esc(o.client)}</div>
+        <div style="font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(o.name)}</div>
+      </div>`;
+      html += '<div style="display:flex;flex:1;gap:2px;">';
+      months.forEach(m => {
+        const inRange = m >= s.start && m <= s.end;
+        const isFirst = m.getTime() === s.start.getTime();
+        const isLast  = m.getTime() === s.end.getTime();
+        const cur     = isCurMo(m);
+        if (inRange) {
+          const intensity = Math.max(0.18, Math.min(0.85, s.monthly / (maxTotal / Math.max(data.length, 1) * 3 + 1)));
+          const alpha = intensity * 0.65 + 0.18;
+          const rr = (isFirst && isLast) ? '4px' : isFirst ? '4px 0 0 4px' : isLast ? '0 4px 4px 0' : '0';
+          const border = cur ? `1.5px solid rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.9)` : '1.5px solid transparent';
+          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:${rr};background:rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha});border:${border};display:flex;align-items:center;justify-content:center;" title="${esc(o.client)}: ${fmt(s.monthly)}/mo, ${s.dur}mo">
+            <span style="font-size:9px;font-weight:600;color:#fff;">${s.monthly >= 1000 ? fmt(s.monthly) : ''}</span>
+          </div>`;
+        } else {
+          html += `<div style="flex:1;min-width:64px;height:28px;border:${cur ? '1.5px solid var(--blue)' : 'none'};"></div>`;
+        }
+      });
+      html += '</div></div>';
+    });
+  });
+
+  chart.innerHTML = html;
+}
+
+function renderAll() {
+  renderMetrics();
+  renderPipeline();
+  renderValue();
+  populateOwners();
+  renderProb();
+  renderUpdated();
+  populateClosedOwners();
+  renderClosed2026();
+  renderForecast();
+}
+
+// ─── Init ─────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  loadData();
+});
+</script>
+</body>
+</html>
