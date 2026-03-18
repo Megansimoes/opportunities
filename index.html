@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -246,6 +247,8 @@
 <script>
 // ─── Configuration ─────────────────────────────────────────
 let SHEET_ID = '1xgeVnACB4gnFdn8jQ_FF4VeG6LvwjjC6eCxWdkWAN0U';
+let SHEET_GID = '0';
+let SHEET_URL = '';
 let opps = [];
 
 // ─── Stage color map ────────────────────────────────────────
@@ -300,17 +303,30 @@ function toggleConfig() {
   b.classList.toggle('hidden');
 }
 
-function extractSheetId(url) {
-  const m = url.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  return m ? m[1] : url.trim();
+function extractSheetConfig(url) {
+  const raw = String(url || '').trim();
+  const idMatch = raw.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  const gidMatch = raw.match(/[?&#]gid=([0-9]+)/);
+  const outputCsv = /output=csv|format=csv/i.test(raw);
+  return {
+    id: idMatch ? idMatch[1] : raw,
+    gid: gidMatch ? gidMatch[1] : '0',
+    raw,
+    isDirectCsv: outputCsv
+  };
 }
 
 function saveAndLoad() {
   const raw = document.getElementById('sheet-url-input').value.trim();
   if (!raw) return;
-  SHEET_ID = extractSheetId(raw);
+  const cfg = extractSheetConfig(raw);
+  SHEET_ID = cfg.id;
+  SHEET_GID = cfg.gid;
+  SHEET_URL = cfg.raw;
   document.getElementById('config-banner').classList.add('hidden');
   localStorage.setItem('wj_sheet_id', SHEET_ID);
+  localStorage.setItem('wj_sheet_gid', SHEET_GID);
+  localStorage.setItem('wj_sheet_url', SHEET_URL);
   loadData();
 }
 
@@ -326,11 +342,17 @@ async function loadData() {
     return;
   }
 
-  const urls = [
-    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`,
-    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`,
-    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=0&single=true&output=csv`
-  ];
+  const urls = [];
+
+  if (SHEET_URL && /output=csv|format=csv/i.test(SHEET_URL)) {
+    urls.push(SHEET_URL);
+  }
+
+  urls.push(
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`,
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${SHEET_GID}`,
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=${SHEET_GID}&single=true&output=csv`
+  );
 
   let text = null;
   let lastError = null;
@@ -356,7 +378,7 @@ async function loadData() {
   if (!text) {
     showError(
       'Could not load the Google Sheet.',
-      'Make sure the sheet is set to <strong>"Anyone with the link can view"</strong>. If it still fails, publish the sheet to the web and keep using tab <strong>gid=0</strong>. Also make sure this page is opened from a hosted URL, not directly from your desktop.'
+      'Make sure the sheet is set to <strong>Anyone with the link can view</strong>. If it still fails, use <strong>File → Share → Publish to web</strong>, choose <strong>CSV</strong> for the correct tab, then paste that published CSV URL into this box. Also confirm the <strong>gid</strong> in your pasted URL matches the tab you want.'
     );
     console.error('Google Sheet load failed:', lastError);
     return;
@@ -364,7 +386,7 @@ async function loadData() {
 
   const rows = parseCSV(text);
   if (rows.length < 1) {
-    showError('Sheet appears empty.', 'Check that the sheet has data and the correct tab is active (gid=0).');
+    showError('Sheet appears empty.', 'Check that the sheet has data and the correct tab is active for this URL/gid.');
     return;
   }
 
@@ -379,7 +401,7 @@ async function loadData() {
   renderAll();
   document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString();
   document.getElementById('last-updated').textContent = `Google Sheets · ${opps.length} records loaded`;
-  document.getElementById('footer-txt').textContent = `Sheet ID: ${SHEET_ID}`;
+  document.getElementById('footer-txt').textContent = `Sheet ID: ${SHEET_ID} · gid: ${SHEET_GID}`;
   document.getElementById('opp-badge').textContent = `${opps.length} records loaded`;
   document.getElementById('opp-badge').className = 'badge success';
 }
@@ -616,10 +638,13 @@ function renderAll() {
 // ─── Init ─────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   const saved = localStorage.getItem('wj_sheet_id');
+  const savedGid = localStorage.getItem('wj_sheet_gid') || '0';
+  const savedUrl = localStorage.getItem('wj_sheet_url');
   if (saved) {
     SHEET_ID = saved;
-    document.getElementById('sheet-url-input').value =
-      `https://docs.google.com/spreadsheets/d/${saved}/edit`;
+    SHEET_GID = savedGid;
+    SHEET_URL = savedUrl || `https://docs.google.com/spreadsheets/d/${saved}/edit?gid=${savedGid}`;
+    document.getElementById('sheet-url-input').value = SHEET_URL;
   }
   loadData();
 });
