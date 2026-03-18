@@ -166,6 +166,33 @@
   /* Footer */
   .footer { margin-top: 32px; padding-top: 16px; border-top: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
   .footer p { font-size: 11px; color: var(--text3); }
+
+  /* Forecast */
+  .forecast-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 700px) { .forecast-summary { grid-template-columns: 1fr; } }
+  .forecast-chart-wrap { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 20px; overflow-x: auto; }
+  .forecast-month-headers { display: flex; margin-bottom: 6px; padding-left: 200px; }
+  .forecast-month-lbl { flex: 1; min-width: 64px; text-align: center; font-size: 10px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; }
+  .forecast-month-lbl.current-month { color: var(--blue-tc); }
+  .forecast-totals-row { display: flex; align-items: center; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 0.5px solid var(--border); }
+  .forecast-row-lbl { width: 200px; flex-shrink: 0; font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; padding-right: 12px; }
+  .forecast-totals-cells { display: flex; flex: 1; }
+  .forecast-total-cell { flex: 1; min-width: 64px; text-align: center; font-size: 11px; font-weight: 700; color: var(--text); }
+  .forecast-total-cell.has-value { color: var(--blue-tc); }
+  .forecast-opp-row { display: flex; align-items: center; margin-bottom: 5px; }
+  .forecast-opp-lbl { width: 200px; flex-shrink: 0; padding-right: 12px; }
+  .forecast-opp-client { font-size: 11px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .forecast-opp-name { font-size: 10px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .forecast-opp-cells { display: flex; flex: 1; gap: 2px; }
+  .forecast-cell { flex: 1; min-width: 64px; height: 28px; border-radius: 4px; }
+  .forecast-cell.active { display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; cursor: default; }
+  .forecast-cell.close-month { border-radius: 4px 0 0 4px; }
+  .forecast-cell.end-month { border-radius: 0 4px 4px 0; }
+  .forecast-section-header { font-size: 12px; font-weight: 700; color: var(--text); margin: 18px 0 10px; padding-bottom: 8px; border-bottom: 0.5px solid var(--border); }
+  .forecast-empty { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 13px; }
+  .prob-toggle { display: flex; gap: 4px; }
+  .prob-toggle button { font-size: 11px; padding: 4px 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--surface); color: var(--text2); cursor: pointer; font-family: var(--font); }
+  .prob-toggle button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
 </style>
 </head>
 <body>
@@ -199,6 +226,7 @@
     <button class="tab" onclick="showTab('probability')">By probability</button>
     <button class="tab" onclick="showTab('updated')">Last updated</button>
     <button class="tab" onclick="showTab('closed2026')">Revenue closed in 2026</button>
+    <button class="tab" onclick="showTab('forecast')">Revenue forecast</button>
   </div>
 
   <!-- Pipeline panel -->
@@ -274,6 +302,36 @@
       <select id="closed-owner-filter" onchange="handleClosedOwnerFilterChange()"><option value="all">All owners</option></select>
     </div>
     <div class="revenue-closed-list" id="closed2026-list"></div>
+  </div>
+
+  <!-- Forecast panel -->
+  <div class="panel" id="panel-forecast">
+    <div class="filter-row">
+      <label>Include:</label>
+      <select id="forecast-stage-filter" onchange="renderForecast()">
+        <option value="active">Active pipeline only</option>
+        <option value="all">All (incl. hold)</option>
+        <option value="contract">Contract signed only</option>
+      </select>
+      <label>Min probability:</label>
+      <select id="forecast-prob-filter" onchange="renderForecast()">
+        <option value="0">All probabilities</option>
+        <option value="30">30%+</option>
+        <option value="50">50%+</option>
+        <option value="70">70%+</option>
+      </select>
+      <label>Value shown:</label>
+      <div class="prob-toggle">
+        <button id="toggle-full" class="active" onclick="setForecastMode('full')">Full value</button>
+        <button id="toggle-weighted" onclick="setForecastMode('weighted')">Weighted</button>
+      </div>
+    </div>
+    <div class="forecast-summary">
+      <div class="mc"><div class="mc-lbl">Next 3 months</div><div class="mc-val" id="fc-3mo">—</div><div class="mc-sub">projected revenue</div></div>
+      <div class="mc"><div class="mc-lbl">Next 6 months</div><div class="mc-val" id="fc-6mo">—</div><div class="mc-sub">projected revenue</div></div>
+      <div class="mc"><div class="mc-lbl">Next 12 months</div><div class="mc-val" id="fc-12mo">—</div><div class="mc-sub">projected revenue</div></div>
+    </div>
+    <div class="forecast-chart-wrap" id="forecast-chart"></div>
   </div>
 
   <div class="footer">
@@ -489,6 +547,7 @@ function mapRows(rows) {
     owner:  findField(r, keys, ['Opportunity_Owner_Name','owner','assigned','rep','salesperson','user','account manager']) || '—',
     modified: findField(r, keys, ['Last_Modified_Date','Last Modified','Modified Date','Modified','updated','last update','last activity']) || '—',
     close:  findField(r, keys, ['Forecasted_Close_Date','close','date','expected','due','target','close date']) || '—',
+    months: parseFloat((findField(r, keys, ['Months','duration','length','contract months','project months']) || '0').replace(/[^0-9.-]/g,'')) || 0,
   })).filter(r => r.client !== '—' || r.name !== '—');
 }
 
@@ -826,6 +885,196 @@ function showError(title, body) {
   document.getElementById('last-updated').textContent = 'Connection failed';
 }
 
+// ─── Forecast ─────────────────────────────────────────────────
+let forecastMode = 'full'; // 'full' or 'weighted'
+
+function setForecastMode(mode) {
+  forecastMode = mode;
+  document.getElementById('toggle-full').classList.toggle('active', mode === 'full');
+  document.getElementById('toggle-weighted').classList.toggle('active', mode === 'weighted');
+  renderForecast();
+}
+
+function parseCloseDate(val) {
+  if (!val || val === '—') return null;
+  // Handle Excel serial dates (numbers like 46142)
+  const num = parseFloat(val);
+  if (!isNaN(num) && num > 40000 && num < 60000) {
+    // Excel serial: days since 1900-01-01 (with Lotus 1-2-3 leap year bug)
+    const d = new Date(Date.UTC(1899, 11, 30) + num * 86400000);
+    if (!isNaN(d.getTime())) return d;
+  }
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function renderForecast() {
+  const stageView = document.getElementById('forecast-stage-filter').value;
+  const minProb   = parseInt(document.getElementById('forecast-prob-filter').value) || 0;
+
+  // Filter opps
+  let data = opps.filter(o => {
+    if (isDead(o.stage)) return false;
+    if (stageView === 'active' && !isActive(o.stage)) return false;
+    if (stageView === 'contract' && !isContract(o.stage)) return false;
+    if (stageView === 'all' && isDead(o.stage)) return false;
+    if ((o.prob || 0) < minProb) return false;
+    if (!o.value || o.value <= 0) return false;
+    const closeDate = parseCloseDate(o.close);
+    if (!closeDate) return false;
+    const dur = o.months || 1;
+    return dur > 0;
+  });
+
+  const chart = document.getElementById('forecast-chart');
+  if (!data.length) {
+    chart.innerHTML = '<div class="forecast-empty">No opportunities with close dates and duration found. Check that your sheet has <strong>Forecasted_Close_Date</strong> and <strong>Months</strong> columns.</div>';
+    document.getElementById('fc-3mo').textContent = '—';
+    document.getElementById('fc-6mo').textContent = '—';
+    document.getElementById('fc-12mo').textContent = '—';
+    return;
+  }
+
+  // Build 18-month window starting from current month
+  const now = new Date();
+  const windowStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const NUM_MONTHS = 18;
+  const months = Array.from({length: NUM_MONTHS}, (_, i) => {
+    const d = new Date(windowStart);
+    d.setMonth(d.getMonth() + i);
+    return d;
+  });
+
+  // For each opp, determine which months it generates revenue
+  // Revenue starts the month AFTER close date, runs for `months` duration
+  // Monthly value = total value / months
+  function oppMonthlyRevenue(o) {
+    const closeDate = parseCloseDate(o.close);
+    if (!closeDate) return null;
+    const dur = Math.max(1, o.months || 1);
+    const monthlyVal = (o.value || 0) / dur;
+    const factor = forecastMode === 'weighted' ? (o.prob || 0) / 100 : 1;
+    // Start = month after close
+    const startMonth = new Date(closeDate.getFullYear(), closeDate.getMonth() + 1, 1);
+    const endMonth   = new Date(startMonth);
+    endMonth.setMonth(endMonth.getMonth() + dur - 1);
+    return { startMonth, endMonth, monthlyVal: monthlyVal * factor, closeDate, dur };
+  }
+
+  // Sort by close date
+  data = data.sort((a,b) => {
+    const da = parseCloseDate(a.close), db = parseCloseDate(b.close);
+    return (da||0) - (db||0);
+  });
+
+  // Compute totals per month
+  const monthTotals = months.map(m => {
+    let total = 0;
+    data.forEach(o => {
+      const r = oppMonthlyRevenue(o);
+      if (!r) return;
+      if (m >= r.startMonth && m <= r.endMonth) total += r.monthlyVal;
+    });
+    return total;
+  });
+
+  // Summary metrics
+  const now3  = months.slice(0, 3).reduce((s,_,i) => s + monthTotals[i], 0);
+  const now6  = months.slice(0, 6).reduce((s,_,i) => s + monthTotals[i], 0);
+  const now12 = months.slice(0, 12).reduce((s,_,i) => s + monthTotals[i], 0);
+  document.getElementById('fc-3mo').textContent  = fmt(now3);
+  document.getElementById('fc-6mo').textContent  = fmt(now6);
+  document.getElementById('fc-12mo').textContent = fmt(now12);
+
+  // Month label formatter
+  const fmtMonth = d => d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  const isCurrentMonth = d => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+
+  // Color ramp for month cells based on value
+  const maxMonthVal = Math.max(...monthTotals, 1);
+  function cellStyle(val, isActive, prob) {
+    if (!isActive || val <= 0) return '';
+    const intensity = Math.max(0.12, Math.min(0.9, val / maxMonthVal));
+    // use blue ramp for active cells
+    return `background: rgba(24, 95, 165, ${intensity * 0.7 + 0.1}); color: #fff;`;
+  }
+
+  // Build HTML
+  let html = '';
+
+  // Month header row
+  html += '<div style="display:flex; margin-bottom:6px; padding-left:200px;">';
+  months.forEach(m => {
+    const cur = isCurrentMonth(m) ? ' style="color:var(--blue-tc);font-weight:700"' : '';
+    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;"${cur}>${fmtMonth(m)}</div>`;
+  });
+  html += '</div>';
+
+  // Totals row
+  html += '<div style="display:flex;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:0.5px solid var(--border);">';
+  html += '<div style="width:200px;flex-shrink:0;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;padding-right:12px;">Monthly total</div>';
+  html += '<div style="display:flex;flex:1;">';
+  monthTotals.forEach(t => {
+    const style = t > 0 ? `color:var(--blue-tc);font-weight:700` : `color:var(--text3)`;
+    html += `<div style="flex:1;min-width:64px;text-align:center;font-size:11px;${style}">${t > 0 ? fmt(t) : '—'}</div>`;
+  });
+  html += '</div></div>';
+
+  // Group opps by close month for readability
+  const groups = new Map();
+  data.forEach(o => {
+    const closeDate = parseCloseDate(o.close);
+    if (!closeDate) return;
+    const key = `${closeDate.getFullYear()}-${String(closeDate.getMonth()+1).padStart(2,'0')}`;
+    const label = closeDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    if (!groups.has(key)) groups.set(key, { label, items: [] });
+    groups.get(key).items.push(o);
+  });
+
+  // Render each group
+  [...groups.entries()].sort((a,b) => a[0].localeCompare(b[0])).forEach(([, group]) => {
+    html += `<div class="forecast-section-header">Closing ${esc(group.label)}</div>`;
+
+    group.items.forEach(o => {
+      const r = oppMonthlyRevenue(o);
+      if (!r) return;
+      const p = pColor(o.prob);
+
+      html += '<div style="display:flex;align-items:center;margin-bottom:5px;">';
+      // Label
+      html += `<div style="width:200px;flex-shrink:0;padding-right:12px;overflow:hidden;">
+        <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(o.client)}">${esc(o.client)}</div>
+        <div style="font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(o.name)}</div>
+      </div>`;
+
+      // Cells
+      html += '<div style="display:flex;flex:1;gap:2px;">';
+      months.forEach((m, mi) => {
+        const inRange = m >= r.startMonth && m <= r.endMonth;
+        const isFirst = m.getTime() === r.startMonth.getTime();
+        const isLast  = m.getTime() === r.endMonth.getTime();
+        const isCur   = isCurrentMonth(m);
+
+        if (inRange) {
+          const monthVal = r.monthlyVal;
+          const intensity = Math.max(0.15, Math.min(0.85, monthVal / (maxMonthVal / data.length * 3 + 1)));
+          const rr = isFirst ? '4px 0 0 4px' : isLast ? '0 4px 4px 0' : '0';
+          const border = isCur ? '1.5px solid var(--blue)' : '1.5px solid transparent';
+          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:${rr};background:rgba(24,95,165,${intensity * 0.6 + 0.15});border:${border};display:flex;align-items:center;justify-content:center;" title="${esc(o.client)}: ${fmt(monthVal)}/mo for ${o.months} mo">
+            <span style="font-size:9px;font-weight:600;color:#fff;">${monthVal >= 1000 ? fmt(monthVal) : ''}</span>
+          </div>`;
+        } else {
+          const border = isCur ? '1.5px solid var(--blue)' : 'none';
+          html += `<div style="flex:1;min-width:64px;height:28px;border-radius:0;border:${border};"></div>`;
+        }
+      });
+      html += '</div></div>';
+    });
+  });
+
+  chart.innerHTML = html;
+}
+
 function renderAll() {
   renderMetrics();
   renderPipeline();
@@ -835,6 +1084,7 @@ function renderAll() {
   renderUpdated();
   populateClosedOwners();
   renderClosed2026();
+  renderForecast();
 }
 
 // ─── Init ─────────────────────────────────────────────────────
