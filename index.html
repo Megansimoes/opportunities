@@ -117,6 +117,15 @@
   .pbar-f { height: 100%; border-radius: 4px; }
   .pmeta { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); }
 
+
+  /* Last updated */
+  .updated-list { display: flex; flex-direction: column; gap: 18px; }
+  .updated-group { display: flex; flex-direction: column; gap: 10px; }
+  .updated-header { font-size: 13px; font-weight: 700; color: var(--text); padding-bottom: 8px; border-bottom: 0.5px solid var(--border); }
+  .updated-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 900px) { .updated-cards { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .updated-cards { grid-template-columns: 1fr; } }
+
   /* Legend */
   .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; padding-top: 16px; border-top: 0.5px solid var(--border); }
   .li { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text2); }
@@ -162,6 +171,7 @@
     <button class="tab active" onclick="showTab('pipeline')">Pipeline by stage</button>
     <button class="tab" onclick="showTab('value')">By value</button>
     <button class="tab" onclick="showTab('probability')">By probability</button>
+    <button class="tab" onclick="showTab('updated')">Last updated</button>
   </div>
 
   <!-- Pipeline panel -->
@@ -222,6 +232,11 @@
     </div>
     <div class="pgrid" id="prob-grid"></div>
     <div class="legend" id="prob-legend"></div>
+  </div>
+
+  <!-- Last updated panel -->
+  <div class="panel" id="panel-updated">
+    <div id="updated-list"></div>
   </div>
 
   <div class="footer">
@@ -579,6 +594,59 @@ function renderProb() {
   });
 }
 
+
+function renderUpdated() {
+  const cont = document.getElementById('updated-list');
+  cont.className = 'updated-list';
+  cont.innerHTML = '';
+
+  let data = opps.filter(o => !isDead(o.stage) && parseModifiedDate(o.modified));
+  data = data.sort((a, b) => parseModifiedDate(b.modified) - parseModifiedDate(a.modified));
+
+  if (!data.length) {
+    cont.innerHTML = '<div class="state-msg"><h3>No modified dates found</h3><p>Add a modified date column in your sheet to use this view.</p></div>';
+    return;
+  }
+
+  const groups = new Map();
+  data.forEach(o => {
+    const key = fmtDate(o.modified);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o);
+  });
+
+  groups.forEach((items, label) => {
+    const group = document.createElement('div');
+    group.className = 'updated-group';
+
+    const header = document.createElement('div');
+    header.className = 'updated-header';
+    header.textContent = label;
+    group.appendChild(header);
+
+    const cards = document.createElement('div');
+    cards.className = 'updated-cards';
+
+    items.forEach(o => {
+      const p = pColor(o.prob);
+      const card = document.createElement('div');
+      card.className = 'pcard';
+      card.innerHTML = `<div class="pcard-top">
+        <div><div class="pclient">${esc(o.client)}</div><div class="pname">${esc(o.name)}</div></div>
+        <div class="ppct" style="color:${p.bar}">${o.prob ? Math.round(o.prob) + '%' : '—'}</div>
+      </div>
+      <div class="pbar-t"><div class="pbar-f" style="width:${Math.max(0, Math.min(100, o.prob || 0))}%;background:${p.bar}"></div></div>
+      <div class="pmeta"><span>${fmt(o.value)}</span><span>${shortStage(o.stage)}</span></div>
+      <div class="pmeta"><span>Owner: ${esc(o.owner || '—')}</span><span>Modified: ${esc(fmtDate(o.modified))}</span></div>`;
+      cards.appendChild(card);
+    });
+
+    group.appendChild(cards);
+    cont.appendChild(group);
+  });
+}
+
+
 // ─── Helpers ──────────────────────────────────────────────────
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -590,9 +658,17 @@ function fmtDate(value) {
   return d.toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
 }
 
+
+function parseModifiedDate(value) {
+  if (!value || value === '—') return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
 function showTab(name) {
-  document.querySelectorAll('.tab').forEach((t,i) => {
-    t.classList.toggle('active', ['pipeline','value','probability'][i] === name);
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.getAttribute('onclick').includes(`'${name}'`));
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name).classList.add('active');
@@ -603,6 +679,7 @@ function showLoading() {
     '<div class="state-msg"><div class="spinner"></div><h3>Loading...</h3><p>Fetching from Google Sheets</p></div>';
   document.getElementById('value-bars').innerHTML = '';
   document.getElementById('prob-grid').innerHTML = '';
+  document.getElementById('updated-list').innerHTML = '';
   document.getElementById('opp-badge').textContent = 'Loading...';
   document.getElementById('opp-badge').className = 'badge';
 }
@@ -620,6 +697,7 @@ function renderAll() {
   renderPipeline();
   renderValue();
   renderProb();
+  renderUpdated();
 }
 
 // ─── Init ─────────────────────────────────────────────────────
