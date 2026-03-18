@@ -467,6 +467,7 @@ function mapRows(rows) {
     prob:   parseFloat((findField(r, keys, ['Probability','prob','chance','likelihood','%','close prob']) || '0').replace(/[^0-9.-]/g,'')),
     stage:  findField(r, keys, ['Lead_Stage','stage','status','phase','step','pipeline']) || 'Unknown',
     owner:  findField(r, keys, ['Opportunity_Owner_Name','owner','assigned','rep','salesperson','user','account manager']) || '—',
+    modified: findField(r, keys, ['Last_Modified_Date','Last Modified','Modified Date','Modified','updated','last update','last activity']) || '—',
     close:  findField(r, keys, ['Forecasted_Close_Date','close','date','expected','due','target','close date']) || '—',
   })).filter(r => r.client !== '—' || r.name !== '—');
 }
@@ -522,6 +523,8 @@ function renderPipeline() {
       card.className = 'ocard';
       card.innerHTML = `<div class="oclient">${esc(o.client)}</div>
         <div class="oname">${esc(o.name)}</div>
+        <div class="ometa">Owner: ${esc(o.owner || '—')}</div>
+        <div class="ometa">Last modified: ${esc(fmtDate(o.modified))}</div>
         <div class="oftr">
           <span class="oval">${fmt(o.value)}</span>
           ${o.prob ? `<span class="oprob" style="background:${p.bg};color:${p.text}">${Math.round(o.prob)}%</span>` : ''}
@@ -596,7 +599,8 @@ function renderProb() {
       <div class="ppct" style="color:${p.bar}">${Math.round(o.prob)}%</div>
     </div>
     <div class="pbar-t"><div class="pbar-f" style="width:${o.prob}%;background:${p.bar}"></div></div>
-    <div class="pmeta"><span>${fmt(o.value)}</span><span>${shortStage(o.stage)}</span></div>`;
+    <div class="pmeta"><span>${fmt(o.value)}</span><span>${shortStage(o.stage)}</span></div>
+    <div class="pmeta"><span>Owner: ${esc(o.owner || '—')}</span><span>Modified: ${esc(fmtDate(o.modified))}</span></div>`;
     pg.appendChild(card);
   });
 
@@ -611,6 +615,14 @@ function renderProb() {
 
 // ─── Helpers ──────────────────────────────────────────────────
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+
+function fmtDate(value) {
+  if (!value || value === '—') return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
+}
 
 function showTab(name) {
   document.querySelectorAll('.tab').forEach((t,i) => {
