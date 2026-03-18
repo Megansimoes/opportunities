@@ -97,7 +97,7 @@
   .bar-main { min-width: 0; }
   .bar-info { min-width: 0; }
   .bar-lbl { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.25; white-space: normal; overflow: visible; text-overflow: clip; }
-  .bar-meta { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.25; margin-top: 2px; white-space: normal; overflow: visible; text-overflow: clip; }
+  .bar-meta { font-size: 12px; font-weight: 400; color: var(--text); line-height: 1.25; margin-top: 2px; white-space: normal; overflow: visible; text-overflow: clip; }
   .bar-track { width: 100%; min-width: 0; background: transparent; border-radius: 6px; height: 32px; overflow: visible; }
   .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding: 0 12px; min-width: 78px; }
   .bar-amt { font-size: 11px; font-weight: 700; white-space: nowrap; }
@@ -129,6 +129,9 @@
   .updated-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   @media (max-width: 900px) { .updated-cards { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 600px) { .updated-cards { grid-template-columns: 1fr; } }
+
+  /* Revenue closed */
+  .revenue-closed-list { display: flex; flex-direction: column; gap: 12px; }
 
   /* Legend */
   .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; padding-top: 16px; border-top: 0.5px solid var(--border); }
@@ -176,6 +179,7 @@
     <button class="tab" onclick="showTab('value')">By value</button>
     <button class="tab" onclick="showTab('probability')">By probability</button>
     <button class="tab" onclick="showTab('updated')">Last updated</button>
+    <button class="tab" onclick="showTab('closed2026')">REVENUE CLOSED IN 2026</button>
   </div>
 
   <!-- Pipeline panel -->
@@ -242,6 +246,15 @@
   <!-- Last updated panel -->
   <div class="panel" id="panel-updated">
     <div id="updated-list"></div>
+  </div>
+
+  <!-- Revenue closed in 2026 panel -->
+  <div class="panel" id="panel-closed2026">
+    <div class="filter-row">
+      <label>Owner:</label>
+      <select id="closed-owner-filter" onchange="renderClosed2026()"><option value="all">All owners</option></select>
+    </div>
+    <div class="revenue-closed-list" id="closed2026-list"></div>
   </div>
 
   <div class="footer">
@@ -562,6 +575,19 @@ function populateOwners() {
   });
 }
 
+
+function populateClosedOwners() {
+  const sel = document.getElementById('closed-owner-filter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="all">All owners</option>';
+  [...new Set(opps.filter(o => isContract(o.stage) && parseModifiedDate(o.modified)?.getFullYear() === 2026).map(o=>o.owner).filter(x=>x&&x!=='—'))].sort().forEach(ow => {
+    const opt = document.createElement('option');
+    opt.value = ow; opt.textContent = ow;
+    if (ow === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
 function renderProb() {
   const owner   = document.getElementById('owner-filter').value;
   const minVal  = parseInt(document.getElementById('prob-min-val').value);
@@ -603,6 +629,37 @@ function renderProb() {
   });
 }
 
+
+
+function renderClosed2026() {
+  const cont = document.getElementById('closed2026-list');
+  const owner = document.getElementById('closed-owner-filter').value;
+  let data = opps.filter(o => isContract(o.stage) && parseModifiedDate(o.modified)?.getFullYear() === 2026);
+  if (owner !== 'all') data = data.filter(o => o.owner === owner);
+  data = data.sort((a,b) => (b.value || 0) - (a.value || 0));
+
+  cont.innerHTML = '';
+  if (!data.length) {
+    cont.innerHTML = '<div class="state-msg"><h3>No closed revenue found</h3><p>Try a different owner filter.</p></div>';
+    return;
+  }
+
+  const maxV = data[0]?.value || 1;
+  data.forEach(o => {
+    const st = stColor(o.stage);
+    const pct = Math.max(4, ((o.value || 0) / maxV) * 100).toFixed(1);
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `<div class="bar-main"><div class="bar-info"><div class="bar-lbl" title="${esc(o.client)}">${esc(o.client)}</div><div class="bar-meta">${esc(o.name)}</div></div></div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pct}%;background:${st.bg};border:0.5px solid ${st.color}44">
+          <span class="bar-amt" style="color:${st.tc}">${fmt(o.value)}</span>
+        </div>
+      </div>
+      <span class="bar-stg" style="background:${st.bg};color:${st.tc};border:0.5px solid ${st.color}44">${esc(o.owner || '—')}</span>`;
+    cont.appendChild(row);
+  });
+}
 
 function renderUpdated() {
   const cont = document.getElementById('updated-list');
@@ -689,6 +746,7 @@ function showLoading() {
   document.getElementById('value-bars').innerHTML = '';
   document.getElementById('prob-grid').innerHTML = '';
   document.getElementById('updated-list').innerHTML = '';
+  document.getElementById('closed2026-list').innerHTML = '';
   document.getElementById('opp-badge').textContent = 'Loading...';
   document.getElementById('opp-badge').className = 'badge';
 }
@@ -705,8 +763,11 @@ function renderAll() {
   renderMetrics();
   renderPipeline();
   renderValue();
+  populateOwners();
   renderProb();
   renderUpdated();
+  populateClosedOwners();
+  renderClosed2026();
 }
 
 // ─── Init ─────────────────────────────────────────────────────
