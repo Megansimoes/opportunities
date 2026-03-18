@@ -549,7 +549,7 @@ function renderValue() {
     const pct = Math.max(4, o.value/maxV*100).toFixed(1);
     const row = document.createElement('div');
     row.className = 'bar-row';
-    row.innerHTML = `<div class="bar-lbl" title="${esc(o.client)}">${esc(o.client)}</div>
+    row.innerHTML = `<div class="bar-main"><div class="bar-info"><div class="bar-lbl" title="${esc(o.client)}">${esc(o.client)}</div><div class="bar-meta">${esc(o.name)}</div><div class="bar-meta">Owner: ${esc(o.owner || '—')} · Last modified: ${esc(fmtDate(o.modified))}</div></div></div>
       <div class="bar-track">
         <div class="bar-fill" style="width:${pct}%;background:${st.bg};border:0.5px solid ${st.color}44">
           <span class="bar-amt" style="color:${st.tc}">${fmt(o.value)}</span>
