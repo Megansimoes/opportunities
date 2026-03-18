@@ -92,16 +92,16 @@
   .scnt { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 10px; background: rgba(0,0,0,.1); flex-shrink: 0; margin-left: 4px; }
 
   /* Value bars */
-  .bar-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; align-items: center; gap: 18px; margin-bottom: 10px; cursor: pointer; padding: 4px 0; border-radius: var(--radius-sm); transition: background .1s; }
+  .bar-row { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(520px, 2fr) auto; align-items: center; gap: 14px; margin-bottom: 12px; cursor: pointer; padding: 2px 0; border-radius: var(--radius-sm); transition: background .1s; }
   .bar-row:hover { background: var(--surface2); }
   .bar-main { min-width: 0; }
   .bar-info { min-width: 0; }
   .bar-lbl { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.25; white-space: normal; overflow: visible; text-overflow: clip; }
   .bar-meta { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.25; margin-top: 2px; white-space: normal; overflow: visible; text-overflow: clip; }
-  .bar-track { width: 100%; background: var(--surface2); border-radius: 6px; height: 32px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding: 0 12px; min-width: 88px; }
+  .bar-track { width: 100%; background: transparent; border-radius: 6px; height: 32px; overflow: visible; }
+  .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding: 0 12px; min-width: 78px; }
   .bar-amt { font-size: 11px; font-weight: 700; white-space: nowrap; }
-  .bar-stg { font-size: 10px; padding: 4px 9px; border-radius: 999px; flex-shrink: 0; font-weight: 600; }
+  .bar-stg { font-size: 10px; padding: 4px 9px; border-radius: 999px; flex-shrink: 0; font-weight: 600; justify-self: start; }
   @media (max-width: 900px) {
     .bar-row { grid-template-columns: 1fr; gap: 10px; }
     .bar-stg { justify-self: start; }
@@ -166,8 +166,8 @@
   <div class="metrics">
     <div class="mc"><div class="mc-lbl">Active pipeline</div><div class="mc-val" id="m-total">—</div><div class="mc-sub" id="m-sub">pre-contract opps</div></div>
     <div class="mc"><div class="mc-lbl">Weighted value</div><div class="mc-val" id="m-weighted">—</div><div class="mc-sub">by close probability</div></div>
-    <div class="mc"><div class="mc-lbl">Avg. probability</div><div class="mc-val" id="m-avgprob">—</div><div class="mc-sub">active opps only</div></div>
-    <div class="mc"><div class="mc-lbl">Contracted value</div><div class="mc-val" id="m-hot">—</div><div class="mc-sub">stages 13–14</div></div>
+    <div class="mc"><div class="mc-lbl">Revenue closed in 2026</div><div class="mc-val" id="m-closed2026">—</div><div class="mc-sub">contract signed · modified in 2026</div></div>
+    <div class="mc"><div class="mc-lbl">Contracted value</div><div class="mc-val" id="m-hot">—</div><div class="mc-sub">contract signed stage</div></div>
   </div>
 
   <!-- Tabs -->
@@ -229,7 +229,8 @@
       </select>
       <label>Stage:</label>
       <select id="prob-stage-filter" onchange="renderProb()">
-        <option value="noncontract">Active (excl. contracted)</option>
+        <option value="noncontract">All except contract signed</option>
+        <option value="active">Active pipeline only</option>
         <option value="all">All (excl. dead)</option>
         <option value="contract">Contract signed</option>
       </select>
@@ -461,16 +462,19 @@ function mapRows(rows) {
 // ─── Metrics ─────────────────────────────────────────────────
 function renderMetrics() {
   const active = opps.filter(o => isActive(o.stage) || isHold(o.stage));
-  const total    = active.reduce((s,o) => s+(o.value||0), 0);
-  const weighted = active.reduce((s,o) => s+(o.value||0)*(o.prob||0)/100, 0);
-  const avg      = active.length ? Math.round(active.reduce((s,o)=>s+(o.prob||0),0)/active.length) : 0;
-  const hot      = opps.filter(o => stageNum(o.stage) >= 13 && stageNum(o.stage) <= 14);
-  const hotVal   = hot.reduce((s,o)=>s+(o.value||0),0);
-  document.getElementById('m-total').textContent    = fmt(total);
-  document.getElementById('m-weighted').textContent  = fmt(weighted);
-  document.getElementById('m-avgprob').textContent   = avg + '%';
-  document.getElementById('m-hot').textContent       = fmt(hotVal);
-  document.getElementById('opp-badge').textContent   =
+  const total = active.reduce((s,o) => s + (o.value || 0), 0);
+  const weighted = active.reduce((s,o) => s + (o.value || 0) * (o.prob || 0) / 100, 0);
+  const hot = opps.filter(o => isContract(o.stage));
+  const hotVal = hot.reduce((s,o) => s + (o.value || 0), 0);
+  const closed2026 = hot.filter(o => {
+    const d = parseModifiedDate(o.modified);
+    return d && d.getFullYear() === 2026;
+  }).reduce((s,o) => s + (o.value || 0), 0);
+  document.getElementById('m-total').textContent = fmt(total);
+  document.getElementById('m-weighted').textContent = fmt(weighted);
+  document.getElementById('m-closed2026').textContent = fmt(closed2026);
+  document.getElementById('m-hot').textContent = fmt(hotVal);
+  document.getElementById('opp-badge').textContent =
     active.length + ' active · ' + opps.filter(o=>isContract(o.stage)).length + ' contracted';
   document.getElementById('opp-badge').className = 'badge success';
 }
@@ -530,8 +534,8 @@ function renderValue() {
   cont.innerHTML = '';
   if (!data.length) { cont.innerHTML = '<div class="state-msg"><h3>No results</h3><p>Try lowering the minimum value filter.</p></div>'; return; }
   data.forEach(o => {
-    const st  = stColor(o.stage);
-    const pct = Math.max(4, o.value/maxV*100).toFixed(1);
+    const st = stColor(o.stage);
+    const pct = Math.max(4, o.value / maxV * 100).toFixed(1);
     const row = document.createElement('div');
     row.className = 'bar-row';
     row.innerHTML = `<div class="bar-main"><div class="bar-info"><div class="bar-lbl" title="${esc(o.client)}">${esc(o.client)}</div><div class="bar-meta">${esc(o.name)}</div></div></div>
@@ -540,7 +544,7 @@ function renderValue() {
           <span class="bar-amt" style="color:${st.tc}">${fmt(o.value)}</span>
         </div>
       </div>
-      <span class="bar-stg" style="background:${st.bg};color:${st.tc};border:0.5px solid ${st.color}44">${shortStage(o.stage).split(' ')[0]}</span>`;
+      <span class="bar-stg" style="background:${st.bg};color:${st.tc};border:0.5px solid ${st.color}44">${shortStage(o.stage)}</span>`;
     cont.appendChild(row);
   });
 }
@@ -564,12 +568,13 @@ function renderProb() {
   const stView  = document.getElementById('prob-stage-filter').value;
   let data = opps.filter(o => {
     if (isDead(o.stage)) return false;
-    if (stView === 'noncontract' && (isContract(o.stage) || isHold(o.stage))) return false;
+    if (stView === 'noncontract' && isContract(o.stage)) return false;
+    if (stView === 'active' && (!isActive(o.stage) || isContract(o.stage))) return false;
     if (stView === 'contract' && !isContract(o.stage)) return false;
     return o.value >= minVal && o.prob > 0;
   });
-  if (owner !== 'all') data = data.filter(o=>o.owner===owner);
-  data = data.sort((a,b)=>b.prob-a.prob).slice(0,24);
+  if (owner !== 'all') data = data.filter(o => o.owner === owner);
+  data = data.sort((a,b) => b.prob - a.prob);
 
   const pg = document.getElementById('prob-grid');
   pg.innerHTML = '';
@@ -604,7 +609,7 @@ function renderUpdated() {
   cont.className = 'updated-list';
   cont.innerHTML = '';
 
-  let data = opps.filter(o => !isDead(o.stage) && parseModifiedDate(o.modified));
+  let data = opps.filter(o => !isDead(o.stage) && !isContract(o.stage) && parseModifiedDate(o.modified));
   data = data.sort((a, b) => parseModifiedDate(b.modified) - parseModifiedDate(a.modified));
 
   if (!data.length) {
