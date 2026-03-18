@@ -92,16 +92,20 @@
   .scnt { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 10px; background: rgba(0,0,0,.1); flex-shrink: 0; margin-left: 4px; }
 
   /* Value bars */
-  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; cursor: pointer; padding: 4px; border-radius: var(--radius-sm); transition: background .1s; }
+  .bar-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; align-items: center; gap: 18px; margin-bottom: 10px; cursor: pointer; padding: 4px 0; border-radius: var(--radius-sm); transition: background .1s; }
   .bar-row:hover { background: var(--surface2); }
-  .bar-main { min-width: 0; flex: 1 1 360px; }
+  .bar-main { min-width: 0; }
   .bar-info { min-width: 0; }
   .bar-lbl { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.25; white-space: normal; overflow: visible; text-overflow: clip; }
-  .bar-meta { font-size: 12px; font-weight: 500; color: var(--text); line-height: 1.25; margin-top: 2px; white-space: normal; overflow: visible; text-overflow: clip; }
-  .bar-track { flex: 0 0 min(42%, 340px); background: var(--surface2); border-radius: 4px; height: 22px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding: 0 8px; min-width: 60px; }
-  .bar-amt { font-size: 11px; font-weight: 600; white-space: nowrap; }
-  .bar-stg { font-size: 10px; padding: 2px 7px; border-radius: 8px; flex-shrink: 0; font-weight: 500; }
+  .bar-meta { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.25; margin-top: 2px; white-space: normal; overflow: visible; text-overflow: clip; }
+  .bar-track { width: 100%; background: var(--surface2); border-radius: 6px; height: 32px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding: 0 12px; min-width: 88px; }
+  .bar-amt { font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .bar-stg { font-size: 10px; padding: 4px 9px; border-radius: 999px; flex-shrink: 0; font-weight: 600; }
+  @media (max-width: 900px) {
+    .bar-row { grid-template-columns: 1fr; gap: 10px; }
+    .bar-stg { justify-self: start; }
+  }
 
   /* Probability */
   .pgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
