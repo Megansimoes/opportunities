@@ -394,7 +394,8 @@ function parseCSV(text) {
     return (parsed.data || []).filter(r => Object.values(r).some(v => String(v || '').trim() !== ''));
   }
 
-  const lines = text.trim().split(/?
+  const lines = text.trim().split(/
+?
 /);
   if (!lines.length) return [];
   const headers = splitCSVLine(lines[0]).map(h => h.replace(/^"|"$/g,'').trim());
