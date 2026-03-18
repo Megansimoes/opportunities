@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opportunity Pipeline Dashboard</title>
+<style>
+  :root {
+    --bg: #f8f7f4;
+    --surface: #ffffff;
+    --surface2: #f2f0ec;
+    --border: rgba(0,0,0,0.1);
+    --border2: rgba(0,0,0,0.18);
+    --text: #1a1a18;
+    --text2: #6b6a63;
+    --text3: #9e9d96;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --green: #1D9E75; --green-bg: #E1F5EE; --green-tc: #085041;
+    --blue: #185FA5; --blue-bg: #E6F1FB; --blue-tc: #0C447C;
+    --amber: #BA7517; --amber-bg: #FAEEDA; --amber-tc: #633806;
+    --red: #A32D2D; --red-bg: #FCEBEB; --red-tc: #791F1F;
+    --purple: #534AB7; --purple-bg: #EEEDFE; --purple-tc: #3C3489;
+    --coral: #993556; --coral-bg: #FBEAF0; --coral-tc: #72243E;
+    --gray: #888780; --gray-bg: #F1EFE8; --gray-tc: #444441;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18; --surface: #242422; --surface2: #2e2e2b;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.18);
+      --text: #e8e6df; --text2: #a8a79f; --text3: #6b6a63;
+      --green-bg: #0a3326; --green-tc: #5ecfab;
+      --blue-bg: #0d2840; --blue-tc: #6aaee8;
+      --amber-bg: #2e1e05; --amber-tc: #e8b96a;
+      --red-bg: #2e0f0f; --red-tc: #e87474;
+      --purple-bg: #1c1850; --purple-tc: #a09af5;
+      --coral-bg: #2e0f1e; --coral-tc: #e8739a;
+      --gray-bg: #2a2a27; --gray-tc: #c0bfb7;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Layout */
+  .app { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+  .topbar-left h1 { font-size: 22px; font-weight: 600; color: var(--text); letter-spacing: -.3px; }
+  .topbar-left p { font-size: 13px; color: var(--text2); margin-top: 3px; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .badge { font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 20px; background: var(--blue-bg); color: var(--blue-tc); border: 0.5px solid var(--blue); white-space: nowrap; }
+  .badge.success { background: var(--green-bg); color: var(--green-tc); border-color: var(--green); }
+  .badge.warning { background: var(--amber-bg); color: var(--amber-tc); border-color: var(--amber); }
+  .btn { font-size: 12px; padding: 6px 14px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--surface); color: var(--text); cursor: pointer; font-family: var(--font); transition: background .15s; }
+  .btn:hover { background: var(--surface2); }
+  .btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .btn-primary:hover { opacity: .85; }
+
+  /* Sheets config banner */
+  .config-banner { background: var(--amber-bg); border: 1px solid var(--amber); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .config-banner p { font-size: 13px; color: var(--amber-tc); flex: 1; min-width: 200px; }
+  .config-banner input { font-size: 12px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--amber); background: var(--surface); color: var(--text); font-family: var(--font); flex: 2; min-width: 200px; }
+  .config-banner.hidden { display: none; }
+
+  /* Metrics */
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 800px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .metrics { grid-template-columns: 1fr; } }
+  .mc { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .mc-lbl { font-size: 11px; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .mc-val { font-size: 26px; font-weight: 600; color: var(--text); line-height: 1; }
+  .mc-sub { font-size: 11px; color: var(--text3); margin-top: 5px; }
+
+  /* Tabs */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab { padding: 9px 16px; font-size: 13px; font-family: var(--font); color: var(--text2); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); font-weight: 500; border-bottom-color: var(--text); }
+
+  /* Panel */
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-row label { font-size: 12px; color: var(--text2); }
+  .filter-row select { font-size: 12px; padding: 5px 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--surface); color: var(--text); font-family: var(--font); cursor: pointer; }
+
+  /* Pipeline */
+  .pipe { display: grid; gap: 10px; }
+  .scol { display: flex; flex-direction: column; }
+  .shdr { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: var(--radius) var(--radius) 0 0; margin-bottom: 8px; }
+  .sname { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scnt { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 10px; background: rgba(0,0,0,.1); flex-shrink: 0; margin-left: 4px; }
+  .ocard { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 6px; cursor: pointer; transition: box-shadow .15s, border-color .15s; }
+  .ocard:hover { border-color: var(--border2); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .oclient { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .oname { font-size: 11px; color: var(--text2); margin-bottom: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .oftr { display: flex; align-items: center; justify-content: space-between; }
+  .oval { font-size: 12px; font-weight: 600; color: var(--text); }
+  .oprob { font-size: 10px; padding: 2px 6px; border-radius: 8px; font-weight: 600; }
+
+  /* Value bars */
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; cursor: pointer; padding: 4px; border-radius: var(--radius-sm); transition: background .1s; }
+  .bar-row:hover { background: var(--surface2); }
+  .bar-lbl { font-size: 12px; color: var(--text2); width: 140px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; background: var(--surface2); border-radius: 4px; height: 22px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding: 0 8px; min-width: 60px; }
+  .bar-amt { font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .bar-stg { font-size: 10px; padding: 2px 7px; border-radius: 8px; flex-shrink: 0; font-weight: 500; }
+
+  /* Probability */
+  .pgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 900px) { .pgrid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .pgrid { grid-template-columns: 1fr; } }
+  .pcard { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 14px; cursor: pointer; transition: box-shadow .15s; }
+  .pcard:hover { box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+  .pcard-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .pclient { font-size: 12px; font-weight: 600; color: var(--text); }
+  .pname { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .ppct { font-size: 22px; font-weight: 700; line-height: 1; flex-shrink: 0; margin-left: 8px; }
+  .pbar-t { background: var(--surface2); border-radius: 4px; height: 4px; margin-bottom: 8px; overflow: hidden; }
+  .pbar-f { height: 100%; border-radius: 4px; }
+  .pmeta { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); }
+
+  /* Legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; padding-top: 16px; border-top: 0.5px solid var(--border); }
+  .li { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text2); }
+  .ld { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Loading / error */
+  .state-msg { text-align: center; padding: 60px 20px; color: var(--text2); }
+  .state-msg h3 { font-size: 16px; font-weight: 500; margin-bottom: 8px; color: var(--text); }
+  .state-msg p { font-size: 13px; line-height: 1.6; }
+  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--text2); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Footer */
+  .footer { margin-top: 32px; padding-top: 16px; border-top: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .footer p { font-size: 11px; color: var(--text3); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>Opportunity Pipeline</h1>
+      <p id="last-updated">Connecting to Google Sheets...</p>
+    </div>
+    <div class="topbar-right">
+      <span class="badge" id="opp-badge">Loading...</span>
+      <button class="btn" onclick="loadData()">↻ Refresh</button>
+      <button class="btn" onclick="toggleConfig()">⚙ Sheet</button>
+    </div>
+  </div>
+
+  <!-- Google Sheets config banner -->
+  <div class="config-banner" id="config-banner">
+    <p><strong>Connect your Google Sheet</strong> — paste your sheet URL below, then click Load. The sheet must be set to "Anyone with the link can view."</p>
+    <input type="text" id="sheet-url-input" placeholder="https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/..." value="https://docs.google.com/spreadsheets/d/1xgeVnACB4gnFdn8jQ_FF4VeG6LvwjjC6eCxWdkWAN0U/edit">
+    <button class="btn btn-primary" onclick="saveAndLoad()">Load data</button>
+  </div>
+
+  <!-- Metrics -->
+  <div class="metrics">
+    <div class="mc"><div class="mc-lbl">Active pipeline</div><div class="mc-val" id="m-total">—</div><div class="mc-sub" id="m-sub">pre-contract opps</div></div>
+    <div class="mc"><div class="mc-lbl">Weighted value</div><div class="mc-val" id="m-weighted">—</div><div class="mc-sub">by close probability</div></div>
+    <div class="mc"><div class="mc-lbl">Avg. probability</div><div class="mc-val" id="m-avgprob">—</div><div class="mc-sub">active opps only</div></div>
+    <div class="mc"><div class="mc-lbl">Contracted value</div><div class="mc-val" id="m-hot">—</div><div class="mc-sub">stages 13–14</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('pipeline')">Pipeline by stage</button>
+    <button class="tab" onclick="showTab('value')">By value</button>
+    <button class="tab" onclick="showTab('probability')">By probability</button>
+  </div>
+
+  <!-- Pipeline panel -->
+  <div class="panel active" id="panel-pipeline">
+    <div class="filter-row">
+      <label>View:</label>
+      <select id="stage-filter" onchange="renderPipeline()">
+        <option value="active">Active pipeline (pre-contract)</option>
+        <option value="contract">Contract signed</option>
+        <option value="hold">On hold</option>
+        <option value="all">All (excl. dead deals)</option>
+      </select>
+    </div>
+    <div class="pipe" id="pipeline-board">
+      <div class="state-msg"><div class="spinner"></div><h3>Loading data...</h3><p>Fetching from Google Sheets</p></div>
+    </div>
+  </div>
+
+  <!-- Value panel -->
+  <div class="panel" id="panel-value">
+    <div class="filter-row">
+      <label>Show:</label>
+      <select id="val-filter" onchange="renderValue()">
+        <option value="active">Active pipeline only</option>
+        <option value="all">All (excl. dead deals)</option>
+        <option value="contract">Contract signed</option>
+      </select>
+      <label>Min value:</label>
+      <select id="min-val" onchange="renderValue()">
+        <option value="0">All values</option>
+        <option value="10000">$10K+</option>
+        <option value="50000">$50K+</option>
+        <option value="100000">$100K+</option>
+        <option value="200000">$200K+</option>
+      </select>
+    </div>
+    <div id="value-bars"></div>
+  </div>
+
+  <!-- Probability panel -->
+  <div class="panel" id="panel-probability">
+    <div class="filter-row">
+      <label>Owner:</label>
+      <select id="owner-filter" onchange="renderProb()"><option value="all">All owners</option></select>
+      <label>Min value:</label>
+      <select id="prob-min-val" onchange="renderProb()">
+        <option value="0">All values</option>
+        <option value="10000">$10K+</option>
+        <option value="50000">$50K+</option>
+        <option value="100000">$100K+</option>
+      </select>
+      <label>Stage:</label>
+      <select id="prob-stage-filter" onchange="renderProb()">
+        <option value="noncontract">Active (excl. contracted)</option>
+        <option value="all">All (excl. dead)</option>
+        <option value="contract">Contract signed</option>
+      </select>
+    </div>
+    <div class="pgrid" id="prob-grid"></div>
+    <div class="legend" id="prob-legend"></div>
+  </div>
+
+  <div class="footer">
+    <p id="footer-txt">Data source: Google Sheets</p>
+    <p>Last refreshed: <span id="refresh-time">—</span></p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script>
+// ─── Configuration ─────────────────────────────────────────
+let SHEET_ID = '1xgeVnACB4gnFdn8jQ_FF4VeG6LvwjjC6eCxWdkWAN0U';
+let opps = [];
+
+// ─── Stage color map ────────────────────────────────────────
+const STAGE_MAP = {
+  '01': { color:'#888780', bg:'var(--gray-bg)', tc:'var(--gray-tc)' },
+  '02': { color:'#185FA5', bg:'var(--blue-bg)', tc:'var(--blue-tc)' },
+  '03': { color:'#185FA5', bg:'var(--blue-bg)', tc:'var(--blue-tc)' },
+  '04': { color:'#534AB7', bg:'var(--purple-bg)', tc:'var(--purple-tc)' },
+  '05': { color:'#534AB7', bg:'var(--purple-bg)', tc:'var(--purple-tc)' },
+  '06': { color:'#BA7517', bg:'var(--amber-bg)', tc:'var(--amber-tc)' },
+  '07': { color:'#BA7517', bg:'var(--amber-bg)', tc:'var(--amber-tc)' },
+  '08': { color:'#1D9E75', bg:'var(--green-bg)', tc:'var(--green-tc)' },
+  '09': { color:'#1D9E75', bg:'var(--green-bg)', tc:'var(--green-tc)' },
+  '10': { color:'#993556', bg:'var(--coral-bg)', tc:'var(--coral-tc)' },
+  '11': { color:'#993556', bg:'var(--coral-bg)', tc:'var(--coral-tc)' },
+  '12': { color:'#534AB7', bg:'var(--purple-bg)', tc:'var(--purple-tc)' },
+  '13': { color:'#1D9E75', bg:'var(--green-bg)', tc:'var(--green-tc)' },
+  '14': { color:'#1D9E75', bg:'var(--green-bg)', tc:'var(--green-tc)' },
+  '15': { color:'#888780', bg:'var(--gray-bg)', tc:'var(--gray-tc)' },
+  '16': { color:'#A32D2D', bg:'var(--red-bg)', tc:'var(--red-tc)' },
+};
+
+function stColor(stage) {
+  const num = (stage || '').match(/^(\d+)/);
+  return STAGE_MAP[num ? num[1].padStart(2,'0') : '15'] || STAGE_MAP['15'];
+}
+
+function pColor(p) {
+  if (p >= 75) return { bar:'#1D9E75', text:'var(--green-tc)', bg:'var(--green-bg)' };
+  if (p >= 50) return { bar:'#185FA5', text:'var(--blue-tc)', bg:'var(--blue-bg)' };
+  if (p >= 30) return { bar:'#BA7517', text:'var(--amber-tc)', bg:'var(--amber-bg)' };
+  return { bar:'#A32D2D', text:'var(--red-tc)', bg:'var(--red-bg)' };
+}
+
+function fmt(v) {
+  if (!v && v !== 0) return '—';
+  if (v >= 1000000) return '$' + (v/1000000).toFixed(1) + 'M';
+  if (v >= 1000) return '$' + Math.round(v/1000) + 'K';
+  return '$' + Math.round(v);
+}
+
+function stageNum(s) { const m = (s||'').match(/^(\d+)/); return m ? parseInt(m[1]) : 99; }
+const isActive    = s => { const n = stageNum(s); return n >= 1 && n <= 13; };
+const isContract  = s => stageNum(s) === 14;
+const isHold      = s => stageNum(s) === 15;
+const isDead      = s => stageNum(s) === 16;
+const shortStage  = s => s.replace(/^\d+\.\s/,'').replace(/ \/ Move to Trash/,'').replace(/ \/ Contract Negotiations.*$/,'').split(' - ')[0];
+
+// ─── Config UI ──────────────────────────────────────────────
+function toggleConfig() {
+  const b = document.getElementById('config-banner');
+  b.classList.toggle('hidden');
+}
+
+function extractSheetId(url) {
+  const m = url.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : url.trim();
+}
+
+function saveAndLoad() {
+  const raw = document.getElementById('sheet-url-input').value.trim();
+  if (!raw) return;
+  SHEET_ID = extractSheetId(raw);
+  document.getElementById('config-banner').classList.add('hidden');
+  localStorage.setItem('wj_sheet_id', SHEET_ID);
+  loadData();
+}
+
+// ─── Data loading ────────────────────────────────────────────
+async function loadData() {
+  showLoading();
+
+  if (window.location.protocol === 'file:') {
+    showError(
+      'This file is being opened locally.',
+      'Google Sheets often will not load from a local <strong>file://</strong> page because of browser security rules. Open this HTML through a simple web server or hosting tool, then try again.'
+    );
+    return;
+  }
+
+  const urls = [
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`,
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`,
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=0&single=true&output=csv`
+  ];
+
+  let text = null;
+  let lastError = null;
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const candidate = await res.text();
+      if (candidate && candidate.trim()) {
+        text = candidate;
+        break;
+      }
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  if (!text) {
+    showError(
+      'Could not load the Google Sheet.',
+      'Make sure the sheet is set to <strong>"Anyone with the link can view"</strong>. If it still fails, publish the sheet to the web and keep using tab <strong>gid=0</strong>. Also make sure this page is opened from a hosted URL, not directly from your desktop.'
+    );
+    console.error('Google Sheet load failed:', lastError);
+    return;
+  }
+
+  const rows = parseCSV(text);
+  if (rows.length < 1) {
+    showError('Sheet appears empty.', 'Check that the sheet has data and the correct tab is active (gid=0).');
+    return;
+  }
+
+  opps = mapRows(rows);
+  if (!opps.length) {
+    showError('Data mapped to 0 records.', 'Columns may have unexpected names. Check the sheet headers match the export format in your sheet.');
+    console.warn('Headers found:', rows[0] ? Object.keys(rows[0]) : []);
+    return;
+  }
+
+  populateOwners();
+  renderAll();
+  document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString();
+  document.getElementById('last-updated').textContent = `Google Sheets · ${opps.length} records loaded`;
+  document.getElementById('footer-txt').textContent = `Sheet ID: ${SHEET_ID}`;
+  document.getElementById('opp-badge').textContent = `${opps.length} records loaded`;
+  document.getElementById('opp-badge').className = 'badge success';
+}
+
+function parseCSV(text) {
+  if (window.Papa) {
+    const parsed = Papa.parse(text, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: h => String(h || '').trim()
+    });
+    return (parsed.data || []).filter(r => Object.values(r).some(v => String(v || '').trim() !== ''));
+  }
+
+  const lines = text.trim().split(/?
+/);
+  if (!lines.length) return [];
+  const headers = splitCSVLine(lines[0]).map(h => h.replace(/^"|"$/g,'').trim());
+  return lines.slice(1).map(line => {
+    const vals = splitCSVLine(line).map(v => v.replace(/^"|"$/g,'').trim());
+    const row = {};
+    headers.forEach((h,i) => row[h] = vals[i] || '');
+    return row;
+  }).filter(r => Object.values(r).some(v => v));
+}
+
+function splitCSVLine(line) {
+  const vals = []; let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') { inQ = !inQ; continue; }
+    if (line[i] === ',' && !inQ) { vals.push(cur); cur = ''; continue; }
+    cur += line[i];
+  }
+  vals.push(cur);
+  return vals;
+}
+
+function findField(row, keys, candidates) {
+  for (const c of candidates) {
+    const k = keys.find(k => k.toLowerCase().includes(c.toLowerCase()));
+    if (k !== undefined && row[k] !== undefined && row[k] !== '') return row[k];
+  }
+  return null;
+}
+
+function mapRows(rows) {
+  if (!rows.length) return [];
+  const keys = Object.keys(rows[0]);
+  return rows.map(r => ({
+    client: findField(r, keys, ['Company_Name','client','company','account','firm','customer']) || '—',
+    name:   findField(r, keys, ['Opportunity_Name','opportunity','name','title','description','opp','project']) || '—',
+    value:  parseFloat((findField(r, keys, ['Sale_Amount','value','amount','revenue','budget','estimate','fee','total','$']) || '0').replace(/[^0-9.-]/g,'')),
+    prob:   parseFloat((findField(r, keys, ['Probability','prob','chance','likelihood','%','close prob']) || '0').replace(/[^0-9.-]/g,'')),
+    stage:  findField(r, keys, ['Lead_Stage','stage','status','phase','step','pipeline']) || 'Unknown',
+    owner:  findField(r, keys, ['Opportunity_Owner_Name','owner','assigned','rep','salesperson','user','account manager']) || '—',
+    close:  findField(r, keys, ['Forecasted_Close_Date','close','date','expected','due','target','close date']) || '—',
+  })).filter(r => r.client !== '—' || r.name !== '—');
+}
+
+// ─── Metrics ─────────────────────────────────────────────────
+function renderMetrics() {
+  const active = opps.filter(o => isActive(o.stage) || isHold(o.stage));
+  const total    = active.reduce((s,o) => s+(o.value||0), 0);
+  const weighted = active.reduce((s,o) => s+(o.value||0)*(o.prob||0)/100, 0);
+  const avg      = active.length ? Math.round(active.reduce((s,o)=>s+(o.prob||0),0)/active.length) : 0;
+  const hot      = opps.filter(o => stageNum(o.stage) >= 13 && stageNum(o.stage) <= 14);
+  const hotVal   = hot.reduce((s,o)=>s+(o.value||0),0);
+  document.getElementById('m-total').textContent    = fmt(total);
+  document.getElementById('m-weighted').textContent  = fmt(weighted);
+  document.getElementById('m-avgprob').textContent   = avg + '%';
+  document.getElementById('m-hot').textContent       = fmt(hotVal);
+  document.getElementById('opp-badge').textContent   =
+    active.length + ' active · ' + opps.filter(o=>isContract(o.stage)).length + ' contracted';
+  document.getElementById('opp-badge').className = 'badge success';
+}
+
+// ─── Pipeline ─────────────────────────────────────────────────
+function filterOpps(view) {
+  if (view === 'active')   return opps.filter(o => isActive(o.stage));
+  if (view === 'contract') return opps.filter(o => isContract(o.stage));
+  if (view === 'hold')     return opps.filter(o => isHold(o.stage));
+  return opps.filter(o => !isDead(o.stage));
+}
+
+function renderPipeline() {
+  const view = document.getElementById('stage-filter').value;
+  const data = filterOpps(view);
+  if (!data.length) { document.getElementById('pipeline-board').innerHTML = '<div class="state-msg"><h3>No opportunities</h3><p>Try changing the filter above.</p></div>'; return; }
+
+  const stageNames = [...new Set(data.map(o=>o.stage))].sort((a,b) => stageNum(a)-stageNum(b));
+  const board = document.getElementById('pipeline-board');
+  const cols = Math.min(stageNames.length, 4);
+  board.style.gridTemplateColumns = `repeat(${cols}, minmax(0,1fr))`;
+  board.innerHTML = '';
+
+  stageNames.forEach(sn => {
+    const st = stColor(sn);
+    const items = data.filter(o=>o.stage===sn);
+    const col = document.createElement('div');
+    col.className = 'scol';
+    col.innerHTML = `<div class="shdr" style="background:${st.bg};border:0.5px solid ${st.color}44">
+      <span class="sname" style="color:${st.tc}">${shortStage(sn)}</span>
+      <span class="scnt" style="color:${st.tc}">${items.length}</span>
+    </div>`;
+    items.forEach(o => {
+      const p = pColor(o.prob);
+      const card = document.createElement('div');
+      card.className = 'ocard';
+      card.innerHTML = `<div class="oclient">${esc(o.client)}</div>
+        <div class="oname">${esc(o.name)}</div>
+        <div class="oftr">
+          <span class="oval">${fmt(o.value)}</span>
+          ${o.prob ? `<span class="oprob" style="background:${p.bg};color:${p.text}">${Math.round(o.prob)}%</span>` : ''}
+        </div>`;
+      col.appendChild(card);
+    });
+    board.appendChild(col);
+  });
+}
+
+// ─── Value bars ───────────────────────────────────────────────
+function renderValue() {
+  const view   = document.getElementById('val-filter').value;
+  const minVal = parseInt(document.getElementById('min-val').value);
+  const data   = filterOpps(view).filter(o=>o.value>=minVal).sort((a,b)=>b.value-a.value).slice(0,40);
+  const maxV   = data[0]?.value || 1;
+  const cont   = document.getElementById('value-bars');
+  cont.innerHTML = '';
+  if (!data.length) { cont.innerHTML = '<div class="state-msg"><h3>No results</h3><p>Try lowering the minimum value filter.</p></div>'; return; }
+  data.forEach(o => {
+    const st  = stColor(o.stage);
+    const pct = Math.max(4, o.value/maxV*100).toFixed(1);
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `<div class="bar-lbl" title="${esc(o.client)}">${esc(o.client)}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pct}%;background:${st.bg};border:0.5px solid ${st.color}44">
+          <span class="bar-amt" style="color:${st.tc}">${fmt(o.value)}</span>
+        </div>
+      </div>
+      <span class="bar-stg" style="background:${st.bg};color:${st.tc};border:0.5px solid ${st.color}44">${shortStage(o.stage).split(' ')[0]}</span>`;
+    cont.appendChild(row);
+  });
+}
+
+// ─── Probability grid ─────────────────────────────────────────
+function populateOwners() {
+  const sel = document.getElementById('owner-filter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="all">All owners</option>';
+  [...new Set(opps.map(o=>o.owner).filter(x=>x&&x!=='—'))].sort().forEach(ow => {
+    const opt = document.createElement('option');
+    opt.value = ow; opt.textContent = ow;
+    if (ow === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function renderProb() {
+  const owner   = document.getElementById('owner-filter').value;
+  const minVal  = parseInt(document.getElementById('prob-min-val').value);
+  const stView  = document.getElementById('prob-stage-filter').value;
+  let data = opps.filter(o => {
+    if (isDead(o.stage)) return false;
+    if (stView === 'noncontract' && (isContract(o.stage) || isHold(o.stage))) return false;
+    if (stView === 'contract' && !isContract(o.stage)) return false;
+    return o.value >= minVal && o.prob > 0;
+  });
+  if (owner !== 'all') data = data.filter(o=>o.owner===owner);
+  data = data.sort((a,b)=>b.prob-a.prob).slice(0,24);
+
+  const pg = document.getElementById('prob-grid');
+  pg.innerHTML = '';
+  if (!data.length) { pg.innerHTML = '<div class="state-msg" style="grid-column:1/-1"><h3>No results</h3><p>Try adjusting the filters above.</p></div>'; return; }
+
+  data.forEach(o => {
+    const p = pColor(o.prob);
+    const card = document.createElement('div');
+    card.className = 'pcard';
+    card.innerHTML = `<div class="pcard-top">
+      <div><div class="pclient">${esc(o.client)}</div><div class="pname">${esc(o.name)}</div></div>
+      <div class="ppct" style="color:${p.bar}">${Math.round(o.prob)}%</div>
+    </div>
+    <div class="pbar-t"><div class="pbar-f" style="width:${o.prob}%;background:${p.bar}"></div></div>
+    <div class="pmeta"><span>${fmt(o.value)}</span><span>${shortStage(o.stage)}</span></div>`;
+    pg.appendChild(card);
+  });
+
+  const leg = document.getElementById('prob-legend');
+  leg.innerHTML = '';
+  [{l:'High (≥75%)',c:'#1D9E75'},{l:'Medium (50–74%)',c:'#185FA5'},{l:'Low (30–49%)',c:'#BA7517'},{l:'At risk (<30%)',c:'#A32D2D'}].forEach(x => {
+    const i = document.createElement('div'); i.className = 'li';
+    i.innerHTML = `<span class="ld" style="background:${x.c}"></span>${x.l}`;
+    leg.appendChild(i);
+  });
+}
+
+// ─── Helpers ──────────────────────────────────────────────────
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active', ['pipeline','value','probability'][i] === name);
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+}
+
+function showLoading() {
+  document.getElementById('pipeline-board').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div><h3>Loading...</h3><p>Fetching from Google Sheets</p></div>';
+  document.getElementById('value-bars').innerHTML = '';
+  document.getElementById('prob-grid').innerHTML = '';
+  document.getElementById('opp-badge').textContent = 'Loading...';
+  document.getElementById('opp-badge').className = 'badge';
+}
+
+function showError(title, body) {
+  const html = `<div class="state-msg"><h3>${title}</h3><p>${body}</p><br><button class="btn" onclick="toggleConfig()">⚙ Configure Sheet</button></div>`;
+  document.getElementById('pipeline-board').innerHTML = html;
+  document.getElementById('opp-badge').textContent = 'Error';
+  document.getElementById('opp-badge').className = 'badge warning';
+  document.getElementById('last-updated').textContent = 'Connection failed';
+}
+
+function renderAll() {
+  renderMetrics();
+  renderPipeline();
+  renderValue();
+  renderProb();
+}
+
+// ─── Init ─────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('wj_sheet_id');
+  if (saved) {
+    SHEET_ID = saved;
+    document.getElementById('sheet-url-input').value =
+      `https://docs.google.com/spreadsheets/d/${saved}/edit`;
+  }
+  loadData();
+});
+</script>
+</body>
+</html>
