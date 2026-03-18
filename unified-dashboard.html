@@ -472,15 +472,14 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
     </div>
     <div class="cap-table-wrap">
       <table>
-        <thead><tr><th>Name</th><th>Discipline</th><th>Role</th><th>Hours Logged</th><th>Utilization</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Discipline</th><th>Title</th><th>Util Target</th><th>Hours This Month</th><th>Available Billable Hrs</th><th>Utilization</th><th>Status</th><th></th></tr></thead>
         <tbody id="cap-roster-tbody"></tbody>
       </table>
     </div>
   </div>
 
   <div class="footer">
-    <p>Pipeline hours calculated at <strong>$180/hr blended rate</strong> · Roster synced from Google Sheet</p>
-    <p>138.7 hrs/person/mo target · 80% billable</p>
+    <p>Pipeline hours calculated at <strong>$180/hr blended rate</strong> · Capacity = Available Billable Hours per person from Roster tab</p>
   </div>
 
 </div>
@@ -603,18 +602,48 @@ async function loadRosterData(){
     if(!r.ok) return;
     const t=await r.text();
     const j=JSON.parse(t.replace(/^.*?\(|\);?$/gs,''));
-    if(!j.table||!j.table.rows) return;
-    roster=j.table.rows.filter(r=>r.c[0]?.v).map((r,i)=>({
-      id:i+1,
-      name:String(r.c[0]?.v||''),
-      discipline:String(r.c[1]?.v||''),
-      role:String(r.c[2]?.v||''),
-      hours:parseFloat(r.c[3]?.v)||0,
-      isManager:String(r.c[4]?.v||'').toUpperCase()==='Y'
-    })).filter(r=>!r.isManager&&r.name);
+    if(!j.table||!j.table.rows||!j.table.cols) return;
+
+    // Build header->index map from column labels (case-insensitive, partial match)
+    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    function ci(candidates){
+      for(const c of candidates){
+        const found=cols.find(col=>col.label.includes(c.toLowerCase()));
+        if(found!==undefined) return found.i;
+      }
+      return -1;
+    }
+    const iName  = ci(['name']);
+    const iTitle = ci(['title','role']);
+    const iDisc  = ci(['discipline']);
+    const iUtil  = ci(['utilization target','utilization','util']);
+    const iHours = ci(['hours per current','hours this month','hours per month','current month']);
+    const iAvail = ci(['available billable','available bill','avail bill']);
+    const iMgr   = ci(['manager','is manager','mgr']);
+
+    roster=j.table.rows.filter(r=>r.c[iName>=0?iName:0]?.v).map((r,i)=>{
+      const cv=idx=>idx>=0&&r.c[idx]!=null?r.c[idx].v:null;
+      const numStr=v=>parseFloat(String(v||'0').replace(/[^0-9.-]/g,''))||0;
+      const availBillable  = numStr(cv(iAvail));
+      const hoursThisMonth = numStr(cv(iHours));
+      const rawUtil        = numStr(cv(iUtil));
+      const utilPct        = rawUtil>1 ? rawUtil : rawUtil*100; // normalise to 0-100
+      return {
+        id:            i+1,
+        name:          String(cv(iName)||''),
+        role:          String(cv(iTitle)||''),
+        discipline:    String(cv(iDisc)||''),
+        utilTarget:    utilPct,
+        hoursThisMonth,
+        availBillable,   // ← capacity denominator for discipline cards
+        isManager:     String(cv(iMgr)||'').toUpperCase()==='Y'
+      };
+    }).filter(r=>!r.isManager&&r.name);
+
     renderCapAll();
     document.getElementById('cap-badge').textContent=`${roster.length} team members`;
     document.getElementById('cap-badge').className='bdg bdg-green';
+    document.getElementById('cap-sync-txt').textContent=`${roster.length} people synced from Roster tab`;
   }catch(e){console.warn('Roster load failed:',e);}
 }
 
@@ -733,8 +762,14 @@ function discWeightedHours(disc, oppsArr){
   return oppsArr.reduce((s,o)=>{ const h=oppToDiscHours(o); return s+((h[disc]||0)*(o.prob||0)/100); },0);
 }
 function rosterForDisc(disc){ return fullRoster().filter(r=>r.discipline===disc); }
-function rosterCap(disc){ return rosterForDisc(disc).length * CAP_PER; }
-function rosterLogged(disc){ return rosterForDisc(disc).reduce((s,r)=>s+(r.hours||0),0); }
+// Total available billable hours for a discipline (sum of each person's Available Billable Hours)
+function rosterCap(disc){ return rosterForDisc(disc).reduce((s,r)=>s+(r.availBillable||CAP_PER),0); }
+// Total hours this month logged for a discipline
+function rosterLogged(disc){ return rosterForDisc(disc).reduce((s,r)=>s+(r.hoursThisMonth||r.hours||0),0); }
+// Total available billable hours across whole team
+function totalTeamAvail(){ return fullRoster().reduce((s,r)=>s+(r.availBillable||CAP_PER),0); }
+// Total hours logged across whole team
+function totalTeamLogged(){ return fullRoster().reduce((s,r)=>s+(r.hoursThisMonth||r.hours||0),0); }
 
 function renderCapAll(){
   if(!opps.length) return;
@@ -750,27 +785,26 @@ function renderCapSummary(){
   const all = getFilteredOpps();
   const totalPipeHrs = DISCIPLINES.reduce((s,d)=>s+discTotalHours(d,all),0);
   const wtdPipeHrs   = DISCIPLINES.reduce((s,d)=>s+discWeightedHours(d,all),0);
-  const totalTeamCap = fullRoster().filter(r=>!r.isManager).length*CAP_PER;
-  const totalLogged  = fullRoster().filter(r=>!r.isManager).reduce((s,r)=>s+(r.hours||0),0);
-  const headroom     = totalTeamCap - totalLogged;
+  const totalCap     = totalTeamAvail();
+  const totalLogged  = totalTeamLogged();
+  const headroom     = totalCap - totalLogged;
 
   document.getElementById('cap-summary').innerHTML=`
-    <div class="mc"><div class="mc-lbl">Team Capacity</div><div class="mc-val">${Math.round(totalTeamCap).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${fullRoster().filter(r=>!r.isManager).length} people · ${CAP_PER}h/mo target</div></div>
-    <div class="mc"><div class="mc-lbl">Pipeline Hours</div><div class="mc-val">${Math.round(totalPipeHrs).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">from ${all.length} opps at $${HOURLY_RATE}/hr</div></div>
-    <div class="mc"><div class="mc-lbl">Weighted Pipeline</div><div class="mc-val">${Math.round(wtdPipeHrs).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">probability-adjusted</div></div>
-    <div class="mc ${headroom<0?'':''}"><div class="mc-lbl">Capacity Headroom</div><div class="mc-val" style="color:${headroom<0?'var(--red)':headroom<totalTeamCap*.1?'var(--amber)':'inherit'}">${Math.abs(Math.round(headroom)).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${headroom<0?'over capacity this month':'available this month'}</div></div>
+    <div class="mc"><div class="mc-lbl">Available Billable Hours</div><div class="mc-val">${Math.round(totalCap).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${fullRoster().length} people · sum of individual targets</div></div>
+    <div class="mc"><div class="mc-lbl">Hours Logged This Month</div><div class="mc-val">${Math.round(totalLogged).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${(totalCap>0?(totalLogged/totalCap*100):0).toFixed(1)}% of available capacity</div></div>
+    <div class="mc"><div class="mc-lbl">Pipeline Hours (wtd)</div><div class="mc-val">${Math.round(wtdPipeHrs).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">from ${all.length} opps at $${HOURLY_RATE}/hr</div></div>
+    <div class="mc"><div class="mc-lbl">Remaining Headroom</div><div class="mc-val" style="color:${headroom<0?'var(--red)':headroom<totalCap*.1?'var(--amber)':'inherit'}">${Math.abs(Math.round(headroom)).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${headroom<0?'over capacity this month':'available billable hrs remaining'}</div></div>
   `;
 }
 
 function renderCapDiscCards(){
   const all = getFilteredOpps();
   document.getElementById('cap-disc-cards').innerHTML = DISCIPLINES.map(d=>{
-    const cap    = rosterCap(d);
-    const logged = rosterLogged(d);
-    const pipeH  = discTotalHours(d,all);
+    const cap    = rosterCap(d);      // sum of availBillable for this discipline
+    const logged = rosterLogged(d);   // sum of hoursThisMonth
     const wtdH   = discWeightedHours(d,all);
     const pctLog = cap>0?Math.min(logged/cap*100,100):0;
-    const pctPip = cap>0?Math.min(pipeH/cap*100,100):0;
+    const pctPip = cap>0?Math.min(wtdH/cap*100,100):0;
     const avail  = cap - logged;
     const cnt    = rosterForDisc(d).length;
     const barColor = pctLog>=100?'var(--red)':pctLog>=90?'var(--amber)':pctLog>=70?'var(--green)':'var(--blue)';
@@ -779,9 +813,9 @@ function renderCapDiscCards(){
         <div class="cap-disc-name" style="color:${DISC_COLORS[d]}">${d}</div>
         <div class="cap-disc-ppl">${cnt} ${cnt===1?'person':'people'}</div>
       </div>
-      <div class="cap-bar-lbl"><span>Logged</span><span>${Math.round(logged)}h / ${Math.round(cap)}h</span></div>
+      <div class="cap-bar-lbl"><span>Hours logged</span><span>${Math.round(logged)}h / ${Math.round(cap)}h avail</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctLog}%;background:${barColor}"></div></div>
-      <div class="cap-bar-lbl"><span>Pipeline (wtd)</span><span>${Math.round(wtdH)}h</span></div>
+      <div class="cap-bar-lbl"><span>Pipeline demand (wtd)</span><span>${Math.round(wtdH)}h</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPip}%;background:${DISC_COLORS[d]};opacity:.45"></div></div>
       <div class="cap-disc-chips">
         <span class="cap-chip">${Math.round(logged)}h logged</span>
@@ -817,7 +851,7 @@ function renderCapHeatmap(){
   html+=`<div></div>${months.map(m=>`<div class="cap-hm-hdr">${m}</div>`).join('')}`;
   DISCIPLINES.forEach(d=>{
     html+=`<div class="cap-hm-lbl">${d}</div>`;
-    const cap=rosterCap(d)||1;
+    const cap=rosterCap(d)||1;  // sum of Available Billable Hours for this discipline
     months.forEach((m,i)=>{
       const mDate=new Date(now.getFullYear(),now.getMonth()+i,1);
       const h=discMonthHours(d,mDate);
@@ -842,7 +876,7 @@ function renderCapPipeline(){
   const discF=document.getElementById('cf-disc')?.value||'all';
   const rows=discF==='all'?all:all.filter(o=>{const h=oppToDiscHours(o);return(h[discF]||0)>0;});
   rows.sort((a,b)=>(b.value||0)-(a.value||0));
-  const totalTeamCap=fullRoster().filter(r=>!r.isManager).length*CAP_PER||1;
+  const totalTeamCap=totalTeamAvail()||1;
 
   document.getElementById('cap-pipe-tbody').innerHTML=rows.length?rows.map(o=>{
     const hours=oppToDiscHours(o);
@@ -866,23 +900,30 @@ function renderCapPipeline(){
 function renderCapRoster(){
   const discF=document.getElementById('rf-disc')?.value||'';
   const statF=document.getElementById('rf-status')?.value||'';
-  const r=fullRoster().filter(r=>{
+  const rows=fullRoster().filter(r=>{
     const ok1=!discF||r.discipline===discF;
-    const p=r.hours/CAP_PER*100;
+    const avail=r.availBillable||CAP_PER;
+    const logged=r.hoursThisMonth||r.hours||0;
+    const p=avail>0?logged/avail*100:0;
     const ok2=!statF||(statF==='over'&&p>=105)||(statF==='near'&&p>=90&&p<105)||(statF==='ok'&&p>=60&&p<90)||(statF==='under'&&p<60);
     return ok1&&ok2;
   }).sort((a,b)=>a.discipline.localeCompare(b.discipline)||a.name.localeCompare(b.name));
 
-  document.getElementById('cap-roster-tbody').innerHTML=r.length?r.map(p=>{
-    const pct=p.hours/CAP_PER*100;
-    const bc=pct>=105?'var(--red)':pct>=90?'var(--amber)':pct>=70?'var(--green)':'var(--blue)';
+  document.getElementById('cap-roster-tbody').innerHTML=rows.length?rows.map(p=>{
+    const avail  = p.availBillable||CAP_PER;
+    const logged = p.hoursThisMonth||p.hours||0;
+    const pct    = avail>0?logged/avail*100:0;
+    const bc     = pct>=105?'var(--red)':pct>=90?'var(--amber)':pct>=70?'var(--green)':'var(--blue)';
     const [bCls,bLbl]=pct>=105?['bdg-red','Over']:pct>=90?['bdg-amber','Near Full']:pct>=70?['bdg-green','On Track']:['bdg-blue','Under Used'];
     const isManual=manualRoster.some(m=>m.id===p.id);
+    const utilDisplay=p.utilTarget?Math.round(p.utilTarget)+'%':'—';
     return`<tr>
       <td style="font-weight:500">${esc(p.name)}${isManual?'<span style="font-size:10px;color:var(--text3);margin-left:5px">manual</span>':''}</td>
       <td style="color:${DISC_COLORS[p.discipline]||'var(--text)'};font-weight:500">${esc(p.discipline)}</td>
       <td style="color:var(--text2)">${esc(p.role)}</td>
-      <td><span style="font-weight:500">${p.hours}h</span><span style="color:var(--text2);font-size:12px"> / ${CAP_PER}h</span></td>
+      <td style="text-align:center">${utilDisplay}</td>
+      <td style="font-weight:500">${Math.round(logged)}h</td>
+      <td style="font-weight:500;color:var(--blue-tc)">${Math.round(avail)}h</td>
       <td>
         <div class="util-wrap">
           <div class="util-track"><div class="cap-bar-fill" style="width:${Math.min(pct,100)}%;background:${bc}"></div></div>
@@ -892,7 +933,7 @@ function renderCapRoster(){
       <td><span class="bdg ${bCls}">${bLbl}</span></td>
       <td style="white-space:nowrap">${isManual?`<button class="btn" style="font-size:11px;padding:3px 9px;color:var(--red)" onclick="deleteManualRoster(${p.id})">✕</button>`:'<span style="font-size:11px;color:var(--text3)">Sheet</span>'}</td>
     </tr>`;
-  }).join(''):`<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text2)">No team members${!roster.length?' · add a Roster tab to your sheet':''}</td></tr>`;
+  }).join(''):`<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text2)">No team members${!roster.length?' · Roster tab not loaded yet':''}</td></tr>`;
 }
 
 function showCTab(name,el){
