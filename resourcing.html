@@ -523,6 +523,7 @@ const ROSTER_SHEET_NAME = 'Roster';
 
 let opps = [];
 let roster = [];
+let plannedByDisc = {}; // keyed by discipline name → total Week_Hours for current month
 let closed2026FilterMode = 'all';
 
 // ──────────────────────────────────────
@@ -645,6 +646,7 @@ async function loadRosterData(){
 
     // After roster parses, fetch utilization actuals and merge in
     await loadUtilizationData();
+    await loadPlannedData();
     renderCapAll();
     document.getElementById('cap-badge').textContent=`${roster.length} team members`;
     document.getElementById('cap-badge').className='bdg bdg-green';
@@ -705,6 +707,62 @@ async function loadUtilizationData(){
       console.log('[Match]', p.name, '->', key||'NO MATCH', '=', p.actualBillable);
     });
   }catch(e){console.warn('Utilization load failed:',e);}
+}
+
+async function loadPlannedData(){
+  const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
+  try{
+    const r=await fetch(base+'Planned');
+    if(!r.ok){ console.warn('[Planned] tab not found or not accessible'); return; }
+    const t=await r.text();
+    const j=JSON.parse(t.slice(t.indexOf('(')+1, t.lastIndexOf(')')));
+    if(!j.table||!j.table.rows||!j.table.cols) return;
+
+    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    function ci(candidates){
+      for(const c of candidates){
+        const found=cols.find(col=>col.label.includes(c.toLowerCase()));
+        if(found!==undefined) return found.i;
+      }
+      return -1;
+    }
+    const iUser  = ci(['assigned_user','assigned user','user']);
+    const iHours = ci(['week_hours','week hours','hours']);
+
+    console.log('[Planned] columns found:', cols.map(c=>c.label));
+    console.log('[Planned] iUser='+iUser+' iHours='+iHours);
+    if(iUser<0||iHours<0){
+      console.warn('[Planned] Could not find required columns. Available:', cols.map(c=>c.label));
+      return;
+    }
+
+    // Build name->totalHours lookup
+    const lookup={};
+    j.table.rows.filter(r=>r.c[iUser]?.v).forEach(r=>{
+      const name =String(r.c[iUser].v).trim();
+      const hours=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
+      lookup[name]=(lookup[name]||0)+hours;
+    });
+
+    // Robust name matching helpers (same as utilization)
+    function normName(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
+    function firstLast(s){ const p=normName(s).split(' '); return p[0]+' '+p[p.length-1]; }
+    const lookupKeys=Object.keys(lookup);
+
+    // Map each roster person's hours to their discipline
+    plannedByDisc={};
+    fullRoster().forEach(p=>{
+      const pn=normName(p.name);
+      const pfl=firstLast(p.name);
+      let key=lookupKeys.find(k=>normName(k)===pn);
+      if(!key) key=lookupKeys.find(k=>firstLast(k)===pfl);
+      if(key){
+        const disc=p.discipline;
+        plannedByDisc[disc]=(plannedByDisc[disc]||0)+lookup[key];
+      }
+    });
+    console.log('[Planned] by discipline:', plannedByDisc);
+  }catch(e){console.warn('Planned load failed:',e);}
 }
 
 // CSV parsing
@@ -862,25 +920,33 @@ function renderCapSummary(){
 function renderCapDiscCards(){
   const all = getFilteredOpps();
   document.getElementById('cap-disc-cards').innerHTML = DISCIPLINES.map(d=>{
-    const cap    = rosterCap(d);      // sum of availBillable for this discipline
-    const logged = rosterLogged(d);   // sum of hoursThisMonth
-    const wtdH   = discWeightedHours(d,all);
-    const pctLog = cap>0?Math.min(logged/cap*100,100):0;
-    const pctPip = cap>0?Math.min(wtdH/cap*100,100):0;
-    const avail  = cap - logged;
-    const cnt    = rosterForDisc(d).length;
+    const cap     = rosterCap(d);
+    const logged  = rosterLogged(d);
+    const planned = plannedByDisc[d] || 0;
+    const wtdH    = discWeightedHours(d,all);
+    const pctLog  = cap>0?Math.min(logged/cap*100,100):0;
+    const pctPlan = cap>0?Math.min(planned/cap*100,100):0;
+    const pctPip  = cap>0?Math.min(wtdH/cap*100,100):0;
+    const avail   = cap - logged;
+    const cnt     = rosterForDisc(d).length;
     const barColor = pctLog>=100?'var(--red)':pctLog>=90?'var(--amber)':pctLog>=70?'var(--green)':'var(--blue)';
+    const planColor= pctPlan>=100?'var(--red)':pctPlan>=90?'var(--amber)':'var(--purple)';
+    const plannedBar = planned>0 ? `
+      <div class="cap-bar-lbl"><span>Hours planned (current month)</span><span>${Math.round(planned)}h / ${Math.round(cap)}h avail</span></div>
+      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPlan}%;background:${planColor}"></div></div>` : '';
     return `<div class="cap-disc-card">
       <div class="cap-disc-top">
         <div class="cap-disc-name" style="color:${DISC_COLORS[d]}">${d}</div>
         <div class="cap-disc-ppl">${cnt} ${cnt===1?'person':'people'}</div>
       </div>
+      ${plannedBar}
       <div class="cap-bar-lbl"><span>Hours logged</span><span>${Math.round(logged)}h / ${Math.round(cap)}h avail</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctLog}%;background:${barColor}"></div></div>
       <div class="cap-bar-lbl"><span>Pipeline demand (wtd)</span><span>${Math.round(wtdH)}h</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPip}%;background:${DISC_COLORS[d]};opacity:.45"></div></div>
       <div class="cap-disc-chips">
         <span class="cap-chip">${Math.round(logged)}h logged</span>
+        ${planned>0?`<span class="cap-chip" style="color:${planColor}">${Math.round(planned)}h planned</span>`:''}
         <span class="cap-chip">${Math.round(wtdH)}h pipeline</span>
         <span class="cap-chip" style="color:${avail<0?'var(--red)':'var(--text2)'}">${Math.abs(Math.round(avail))}h ${avail<0?'over':'avail'}</span>
       </div>
