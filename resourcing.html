@@ -406,9 +406,15 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
   <div class="cap-grid-4" id="cap-summary"></div>
 
   <!-- Discipline capacity -->
-  <div class="section-hdr">
-    <div class="section-title"><span id="disc-cap-month"></span> Discipline Capacity</div>
-    <div class="section-sub">Active pipeline load + roster utilization</div>
+  <div class="section-hdr" style="flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:baseline;gap:10px;flex:1">
+      <div class="section-title"><span id="disc-cap-month"></span> Discipline Capacity</div>
+      <div class="section-sub" id="disc-cap-sub">Active pipeline load + roster utilization</div>
+    </div>
+    <div style="display:flex;background:var(--surface2);border:.5px solid var(--border);border-radius:8px;padding:3px;gap:2px">
+      <button id="cap-month-cur" onclick="setCapMonth('current')" style="padding:4px 14px;border-radius:6px;font-size:12px;font-weight:500;border:none;cursor:pointer;font-family:var(--font);background:var(--text);color:var(--surface);transition:all .15s">Current</button>
+      <button id="cap-month-next" onclick="setCapMonth('next')" style="padding:4px 14px;border-radius:6px;font-size:12px;font-weight:500;border:none;cursor:pointer;font-family:var(--font);background:transparent;color:var(--text2);transition:all .15s">Next Month</button>
+    </div>
   </div>
   <div class="cap-disc-grid" id="cap-disc-cards"></div>
 
@@ -534,6 +540,8 @@ const ROSTER_SHEET_NAME = 'Roster';
 let opps = [];
 let roster = [];
 let plannedByDisc = {};
+let plannedNextByDisc = {};
+let selectedCapMonth = 'current'; // 'current' | 'next'
 let closed2026FilterMode = 'all';
 
 // ──────────────────────────────────────
@@ -656,7 +664,7 @@ async function loadRosterData(){
 
     // After roster parses, fetch utilization actuals and merge in
     await loadUtilizationData();
-    await loadPlannedData();
+    await Promise.all([loadPlannedData(), loadPlannedNextData()]);
     renderCapAll();
     document.getElementById('cap-badge').textContent=`${roster.length} team members`;
     document.getElementById('cap-badge').className='bdg bdg-green';
@@ -749,6 +757,38 @@ async function loadPlannedData(){
     });
     console.log('[Planned] by discipline:',plannedByDisc);
   }catch(e){console.warn('Planned load failed:',e);}
+}
+
+async function loadPlannedNextData(){
+  const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
+  try{
+    const r=await fetch(base+'Planned+next');
+    if(!r.ok){ console.warn('[Planned next] tab not found'); return; }
+    const t=await r.text();
+    const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
+    if(!j.table||!j.table.rows||!j.table.cols) return;
+    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    function ci(cands){for(const c of cands){const f=cols.find(col=>col.label.includes(c.toLowerCase()));if(f!==undefined)return f.i;}return -1;}
+    const iUser=ci(['assigned_user','assigned user','user']);
+    const iHours=ci(['week_hours','week hours','hours']);
+    if(iUser<0||iHours<0){console.warn('[Planned next] columns not found:',cols.map(c=>c.label));return;}
+    const lookup={};
+    j.table.rows.filter(r=>r.c[iUser]?.v).forEach(r=>{
+      const name=String(r.c[iUser].v).trim();
+      const hours=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
+      lookup[name]=(lookup[name]||0)+hours;
+    });
+    function normName(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
+    function firstLast(s){const p=normName(s).split(' ');return p[0]+' '+p[p.length-1];}
+    const lkeys=Object.keys(lookup);
+    plannedNextByDisc={};
+    fullRoster().forEach(p=>{
+      const pn=normName(p.name),pfl=firstLast(p.name);
+      let key=lkeys.find(k=>normName(k)===pn)||lkeys.find(k=>firstLast(k)===pfl);
+      if(key){const disc=p.discipline;plannedNextByDisc[disc]=(plannedNextByDisc[disc]||0)+lookup[key];}
+    });
+    console.log('[Planned next] by discipline:',plannedNextByDisc);
+  }catch(e){console.warn('Planned next load failed:',e);}
 }
 
 // CSV parsing
@@ -918,25 +958,32 @@ function renderCapSummary(){
 function renderCapDiscCards(){
   const all = getFilteredOpps();
   const now = new Date();
-  const curMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Which month are we showing?
+  const isNext = selectedCapMonth === 'next';
+  const viewMonth = isNext
+    ? new Date(now.getFullYear(), now.getMonth()+1, 1)
+    : new Date(now.getFullYear(), now.getMonth(), 1);
 
-  function discCurMonthPipeHrs(disc){
+  function discViewMonthPipeHrs(disc){
     return all.reduce((s,o)=>{
       const cd=parseCloseDate(o.close); if(!cd) return s;
       const dur=Math.max(1,o.months||1);
       const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);
       const end=new Date(start); end.setMonth(end.getMonth()+dur-1);
-      if(curMonthStart<start||curMonthStart>end) return s;
+      if(viewMonth<start||viewMonth>end) return s;
       const h=oppToDiscHours(o);
       return s+((h[disc]||0)/dur)*((o.prob||0)/100);
     },0);
   }
 
+  // Use planned data for the selected month
+  const activePlanned = isNext ? plannedNextByDisc : plannedByDisc;
+
   document.getElementById('cap-disc-cards').innerHTML = DISCIPLINES.map(d=>{
     const cap     = rosterCap(d);
     const logged  = rosterLogged(d);
-    const planned = plannedByDisc[d]||0;
-    const wtdH    = discCurMonthPipeHrs(d);
+    const planned = activePlanned[d]||0;
+    const wtdH    = discViewMonthPipeHrs(d);
     const pctLog  = cap>0?Math.min(logged/cap*100,100):0;
     const pctPlan = cap>0?Math.min(planned/cap*100,100):0;
     const pctPip  = cap>0?Math.min(wtdH/cap*100,100):0;
@@ -944,8 +991,9 @@ function renderCapDiscCards(){
     const cnt     = rosterForDisc(d).length;
     const barColor  = pctLog>=100?'var(--red)':pctLog>=90?'var(--amber)':pctLog>=70?'var(--green)':'var(--blue)';
     const planColor = pctPlan>=100?'var(--red)':pctPlan>=90?'var(--amber)':'#F3812C';
+    const loggedLabel = isNext ? 'Hours logged (current month)' : 'Hours logged';
     const plannedBar = planned>0?`
-      <div class="cap-bar-lbl"><span>Hours planned (current month)</span><span>${Math.round(planned)}h / ${Math.round(cap)}h avail</span></div>
+      <div class="cap-bar-lbl"><span>Hours planned</span><span>${Math.round(planned)}h / ${Math.round(cap)}h avail</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPlan}%;background:${planColor}"></div></div>`:'';
     return `<div class="cap-disc-card">
       <div class="cap-disc-top">
@@ -953,7 +1001,7 @@ function renderCapDiscCards(){
         <div class="cap-disc-ppl">${cnt} ${cnt===1?'person':'people'}</div>
       </div>
       ${plannedBar}
-      <div class="cap-bar-lbl"><span>Hours logged</span><span>${Math.round(logged)}h / ${Math.round(cap)}h avail</span></div>
+      <div class="cap-bar-lbl"><span>${loggedLabel}</span><span>${Math.round(logged)}h / ${Math.round(cap)}h avail</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctLog}%;background:${barColor}"></div></div>
       <div class="cap-bar-lbl"><span>Pipeline demand this month (wtd)</span><span>${Math.round(wtdH)}h</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPip}%;background:#F3812C;opacity:.45"></div></div>
@@ -989,29 +1037,38 @@ function renderCapHeatmap(){
   }
 
   const fmtMo=d=>d.toLocaleDateString('en-US',{month:'short',year:'2-digit'});
-  const isCurMo=d=>d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
 
-  // Pre-compute logged % per discipline for current month cell
-  const loggedPct={};
+  // Which month is "active" based on the toggle
+  const isNext = selectedCapMonth === 'next';
+  const activePlanned = isNext ? plannedNextByDisc : plannedByDisc;
+  const highlightMonth = isNext
+    ? new Date(now.getFullYear(), now.getMonth()+1, 1)
+    : new Date(now.getFullYear(), now.getMonth(), 1);
+  const isHighlight = d => d.getFullYear()===highlightMonth.getFullYear() && d.getMonth()===highlightMonth.getMonth();
+
+  // Pre-compute the selected-month cell data per discipline
+  const selectedPct={};
   DISCIPLINES.forEach(d=>{
     const cap=rosterCap(d)||1;
-    const logged=rosterLogged(d);
-    loggedPct[d]=logged/cap*100;
+    if(isNext){
+      const planned=activePlanned[d]||0;
+      selectedPct[d]={pct:planned/cap*100, label:'planned', hours:planned};
+    } else {
+      const logged=rosterLogged(d);
+      selectedPct[d]={pct:logged/cap*100, label:'logged', hours:logged};
+    }
   });
 
   let html=`<div class="cap-hm-grid" style="grid-template-columns:130px repeat(6,1fr)">`;
-  html+=`<div></div>${months.map(m=>`<div class="cap-hm-hdr" style="${isCurMo(m)?'color:var(--text);font-weight:700':''}">${fmtMo(m)}</div>`).join('')}`;
+  html+=`<div></div>${months.map(m=>`<div class="cap-hm-hdr" style="${isHighlight(m)?'color:var(--text);font-weight:700':''}">${fmtMo(m)}</div>`).join('')}`;
   DISCIPLINES.forEach(d=>{
     html+=`<div class="cap-hm-lbl">${d}</div>`;
     const cap=rosterCap(d)||1;
     months.forEach(m=>{
-      const cur=isCurMo(m);
-      if(cur){
-        // Current month: show actual logged hours %
-        const pct=loggedPct[d];
+      if(isHighlight(m)){
+        const {pct, label, hours} = selectedPct[d];
         const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
-        const logged=rosterLogged(d);
-        html+=`<div class="cap-hm-cell ${cls}" style="outline:2px solid var(--blue);outline-offset:-2px" title="${d} · ${fmtMo(m)}: ${Math.round(logged)}h logged / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%) — actual hours this month">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75">logged</span></div>`;
+        html+=`<div class="cap-hm-cell ${cls}" style="outline:2px solid var(--blue);outline-offset:-2px" title="${d} · ${fmtMo(m)}: ${Math.round(hours)}h ${label} / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75">${label}</span></div>`;
       } else {
         const h=discMonthHours(d,m);
         const ratio=h/cap;
@@ -1027,7 +1084,7 @@ function renderCapHeatmap(){
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FBCFA0"></div>75–89%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#F3812C"></div>90–99%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#CC2E2E"></div>≥ 100%</div>
-    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Future months = pipeline wtd · Current month (outlined) = hours logged</div>
+    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Outlined column = ${isNext?'planned hours (next month)':'hours logged (current month)'} · other columns = pipeline wtd</div>
   </div>`;
   document.getElementById('cap-heatmap').innerHTML=html;
 }
@@ -1097,7 +1154,24 @@ function renderCapRoster(){
   }).join(''):`<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text2)">No team members${!roster.length?' · Roster tab not loaded yet':''}</td></tr>`;
 }
 
-function showCTab(name,el){
+function setCapMonth(which){
+  selectedCapMonth=which;
+  const now=new Date();
+  const cur=now.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const next=new Date(now.getFullYear(),now.getMonth()+1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const label=which==='current'?cur:next;
+  const el=document.getElementById('disc-cap-month');
+  if(el) el.textContent=label+' ·';
+  const sub=document.getElementById('disc-cap-sub');
+  if(sub) sub.textContent=which==='current'?'Active pipeline load + roster utilization':'Planned hours for next month';
+  // Toggle button styles
+  const curBtn=document.getElementById('cap-month-cur');
+  const nxtBtn=document.getElementById('cap-month-next');
+  if(curBtn){ curBtn.style.background=which==='current'?'var(--text)':'transparent'; curBtn.style.color=which==='current'?'var(--surface)':'var(--text2)'; }
+  if(nxtBtn){ nxtBtn.style.background=which==='next'?'var(--text)':'transparent'; nxtBtn.style.color=which==='next'?'var(--surface)':'var(--text2)'; }
+  renderCapDiscCards();
+  renderCapHeatmap();
+}
   document.querySelectorAll('#c-tabs .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   document.querySelectorAll('#section-capacity .panel').forEach(p=>p.classList.remove('active'));
@@ -1194,9 +1268,7 @@ document.getElementById('cap-modal-overlay').addEventListener('click',function(e
 // INIT
 // ──────────────────────────────────────
 window.addEventListener('DOMContentLoaded',()=>{
-  const mo=new Date().toLocaleDateString('en-US',{month:'long',year:'numeric'});
-  const el=document.getElementById('disc-cap-month');
-  if(el) el.textContent=mo+' ·';
+  setCapMonth('current');
   loadPipelineData();
 });
 </script>
