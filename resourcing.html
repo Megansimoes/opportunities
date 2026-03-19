@@ -991,17 +991,33 @@ function renderCapHeatmap(){
   const fmtMo=d=>d.toLocaleDateString('en-US',{month:'short',year:'2-digit'});
   const isCurMo=d=>d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
 
+  // Pre-compute logged % per discipline for current month cell
+  const loggedPct={};
+  DISCIPLINES.forEach(d=>{
+    const cap=rosterCap(d)||1;
+    const logged=rosterLogged(d);
+    loggedPct[d]=logged/cap*100;
+  });
+
   let html=`<div class="cap-hm-grid" style="grid-template-columns:130px repeat(6,1fr)">`;
   html+=`<div></div>${months.map(m=>`<div class="cap-hm-hdr" style="${isCurMo(m)?'color:var(--text);font-weight:700':''}">${fmtMo(m)}</div>`).join('')}`;
   DISCIPLINES.forEach(d=>{
     html+=`<div class="cap-hm-lbl">${d}</div>`;
     const cap=rosterCap(d)||1;
     months.forEach(m=>{
-      const h=discMonthHours(d,m);
-      const ratio=h/cap;
-      const cls=ratio>=1?'hm4':ratio>=.9?'hm3':ratio>=.75?'hm2':ratio>=.5?'hm1':'hm0';
       const cur=isCurMo(m);
-      html+=`<div class="cap-hm-cell ${cls}" style="${cur?'outline:2px solid var(--blue);outline-offset:-2px':''}" title="${d} · ${fmtMo(m)}: ${Math.round(h)}h pipeline (wtd) / ${Math.round(cap)}h capacity (${(ratio*100).toFixed(0)}%)">${(ratio*100).toFixed(0)}%</div>`;
+      if(cur){
+        // Current month: show actual logged hours %
+        const pct=loggedPct[d];
+        const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
+        const logged=rosterLogged(d);
+        html+=`<div class="cap-hm-cell ${cls}" style="outline:2px solid var(--blue);outline-offset:-2px" title="${d} · ${fmtMo(m)}: ${Math.round(logged)}h logged / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%) — actual hours this month">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75">logged</span></div>`;
+      } else {
+        const h=discMonthHours(d,m);
+        const ratio=h/cap;
+        const cls=ratio>=1?'hm4':ratio>=.9?'hm3':ratio>=.75?'hm2':ratio>=.5?'hm1':'hm0';
+        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(h)}h pipeline (wtd) / ${Math.round(cap)}h capacity (${(ratio*100).toFixed(0)}%)">${(ratio*100).toFixed(0)}%</div>`;
+      }
     });
   });
   html+=`</div>
@@ -1011,7 +1027,7 @@ function renderCapHeatmap(){
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FBCFA0"></div>75–89%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#F3812C"></div>90–99%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#CC2E2E"></div>≥ 100%</div>
-    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Hours weighted by close probability · service starts month after close</div>
+    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Future months = pipeline wtd · Current month (outlined) = hours logged</div>
   </div>`;
   document.getElementById('cap-heatmap').innerHTML=html;
 }
@@ -1028,7 +1044,7 @@ function renderCapPipeline(){
     const totalH=Object.values(hours).reduce((a,b)=>a+b,0);
     const wtdH=totalH*(o.prob||0)/100;
     const st=stColor(o.stage);
-    const pills=Object.entries(hours).filter(([,h])=>h>0).map(([d,h])=>`<span class="pill" style="background:var(--text);color:var(--surface);border-color:var(--text)">${d}: ${Math.round(h)}h</span>`).join('');
+    const pills=Object.entries(hours).filter(([,h])=>h>0).map(([d,h])=>`<span class="pill" style="background:transparent;color:#ffffff;border-color:rgba(255,255,255,.35)">${d}: ${Math.round(h)}h</span>`).join('');
     const impactPct=(totalH/totalTeamCap*100).toFixed(1);
     return`<tr>
       <td><div style="font-weight:500">${esc(o.client)}</div><div style="font-size:11px;color:var(--text2)">${esc(o.name)}</div></td>
