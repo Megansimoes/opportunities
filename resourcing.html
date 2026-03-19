@@ -399,7 +399,6 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
     <div class="topbar-right">
       <span class="bdg bdg-blue" id="cap-badge">Loading…</span>
       <button class="btn" onclick="capExportCSV()" style="font-size:11px">Export CSV</button>
-      <button class="btn" onclick="openCapModal('roster')">+ Add Person</button>
     </div>
   </div>
 
@@ -408,7 +407,7 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
 
   <!-- Discipline capacity -->
   <div class="section-hdr">
-    <div class="section-title">Discipline Capacity</div>
+    <div class="section-title"><span id="disc-cap-month"></span> Discipline Capacity</div>
     <div class="section-sub">Active pipeline load + roster utilization</div>
   </div>
   <div class="cap-disc-grid" id="cap-disc-cards"></div>
@@ -1179,6 +1178,9 @@ document.getElementById('cap-modal-overlay').addEventListener('click',function(e
 // INIT
 // ──────────────────────────────────────
 window.addEventListener('DOMContentLoaded',()=>{
+  const mo=new Date().toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const el=document.getElementById('disc-cap-month');
+  if(el) el.textContent=mo+' ·';
   loadPipelineData();
 });
 </script>
