@@ -414,9 +414,20 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
   <div class="cap-disc-grid" id="cap-disc-cards"></div>
 
   <!-- Heatmap -->
-  <div class="section-hdr">
-    <div class="section-title">6-Month Pipeline Load</div>
-    <div class="section-sub">Hours required per discipline based on live pipeline · $180/hr</div>
+  <div class="section-hdr" style="flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="section-title">6-Month Pipeline Load</div>
+      <div class="section-sub">Hours required per discipline · weighted by close probability</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+      <label style="font-size:12px;color:var(--text2)">Min probability:</label>
+      <select id="hm-prob-filter" onchange="renderCapHeatmap()" style="font-size:12px;padding:4px 8px;border-radius:6px;border:.5px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--font)">
+        <option value="0">All probabilities</option>
+        <option value="20">20%+</option><option value="30">30%+</option><option value="40">40%+</option>
+        <option value="50">50%+</option><option value="60">60%+</option><option value="70">70%+</option>
+        <option value="80">80%+</option><option value="90">90%+</option><option value="100">100%</option>
+      </select>
+    </div>
   </div>
   <div class="cap-heatmap" id="cap-heatmap"></div>
 
@@ -523,6 +534,7 @@ const ROSTER_SHEET_NAME = 'Roster';
 
 let opps = [];
 let roster = [];
+let plannedByDisc = {};
 let closed2026FilterMode = 'all';
 
 // ──────────────────────────────────────
@@ -645,6 +657,7 @@ async function loadRosterData(){
 
     // After roster parses, fetch utilization actuals and merge in
     await loadUtilizationData();
+    await loadPlannedData();
     renderCapAll();
     document.getElementById('cap-badge').textContent=`${roster.length} team members`;
     document.getElementById('cap-badge').className='bdg bdg-green';
@@ -707,6 +720,38 @@ async function loadUtilizationData(){
   }catch(e){console.warn('Utilization load failed:',e);}
 }
 
+async function loadPlannedData(){
+  const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
+  try{
+    const r=await fetch(base+'Planned');
+    if(!r.ok){ console.warn('[Planned] tab not found'); return; }
+    const t=await r.text();
+    const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
+    if(!j.table||!j.table.rows||!j.table.cols) return;
+    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    function ci(cands){for(const c of cands){const f=cols.find(col=>col.label.includes(c.toLowerCase()));if(f!==undefined)return f.i;}return -1;}
+    const iUser=ci(['assigned_user','assigned user','user']);
+    const iHours=ci(['week_hours','week hours','hours']);
+    if(iUser<0||iHours<0){console.warn('[Planned] columns not found:',cols.map(c=>c.label));return;}
+    const lookup={};
+    j.table.rows.filter(r=>r.c[iUser]?.v).forEach(r=>{
+      const name=String(r.c[iUser].v).trim();
+      const hours=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
+      lookup[name]=(lookup[name]||0)+hours;
+    });
+    function normName(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
+    function firstLast(s){const p=normName(s).split(' ');return p[0]+' '+p[p.length-1];}
+    const lkeys=Object.keys(lookup);
+    plannedByDisc={};
+    fullRoster().forEach(p=>{
+      const pn=normName(p.name),pfl=firstLast(p.name);
+      let key=lkeys.find(k=>normName(k)===pn)||lkeys.find(k=>firstLast(k)===pfl);
+      if(key){const disc=p.discipline;plannedByDisc[disc]=(plannedByDisc[disc]||0)+lookup[key];}
+    });
+    console.log('[Planned] by discipline:',plannedByDisc);
+  }catch(e){console.warn('Planned load failed:',e);}
+}
+
 // CSV parsing
 function parseCSV(text){if(window.Papa){const p=Papa.parse(text,{header:true,skipEmptyLines:true,transformHeader:h=>String(h||'').trim()});return(p.data||[]).filter(r=>Object.values(r).some(v=>String(v||'').trim()!==''));}const lines=text.trim().split(/\r?\n/);if(!lines.length)return[];const headers=splitCSV(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());return lines.slice(1).map(line=>{const vals=splitCSV(line).map(v=>v.replace(/^"|"$/g,'').trim());const row={};headers.forEach((h,i)=>row[h]=vals[i]||'');return row;}).filter(r=>Object.values(r).some(v=>v));}
 function splitCSV(line){const vals=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){if(line[i]==='"'){inQ=!inQ;continue;}if(line[i]===','&&!inQ){vals.push(cur);cur='';continue;}cur+=line[i];}vals.push(cur);return vals;}
@@ -755,7 +800,7 @@ function openClosed2026View(type){showPTab('closed2026',null);document.getElemen
 function renderClosed2026(){const cont=document.getElementById('closed2026-list');const owner=document.getElementById('closed-owner-filter').value||'all';closed2026FilterMode=owner;let data=opps.filter(o=>isContract(o.stage)&&parseModDate(o.modified)?.getFullYear()===2026);if(owner==='__newbiz__')data=data.filter(o=>isNewBizOwner(o.owner));else if(owner==='__upsell__')data=data.filter(o=>!isNewBizOwner(o.owner));else if(owner!=='all')data=data.filter(o=>o.owner===owner);data.sort((a,b)=>(b.value||0)-(a.value||0));cont.innerHTML='';if(!data.length){cont.innerHTML='<div class="state-msg"><h3>No closed revenue</h3><p>Try a different owner filter.</p></div>';return;}const maxV=data[0]?.value||1;data.forEach(o=>{const st=stColor(o.stage);const pct=Math.max(4,((o.value||0)/maxV)*100).toFixed(1);const row=document.createElement('div');row.className='bar-row';row.innerHTML=`<div><div class="bar-lbl" title="${esc(o.client)}">${esc(o.client)}</div><div class="bar-meta">${esc(o.name)}</div></div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${st.bg};border:.5px solid ${st.color}44"><span class="bar-amt" style="color:${st.tc}">${fmtMoney(o.value)}</span></div></div><span class="bar-stg" style="background:${st.bg};color:${st.tc};border:.5px solid ${st.color}44">${esc(o.owner||'—')}</span>`;cont.appendChild(row);});}
 
 const SVC_COLORS={all:[243,129,44],svc_creative:[243,129,44],svc_photovideo:[204,46,46],svc_organicsocial:[29,158,117],svc_paidmedia:[204,102,0],svc_pr:[204,46,46],svc_web:[17,17,17],svc_clientsvc:[119,119,119]};
-function renderForecast(){const stageView=document.getElementById('forecast-stage-filter').value;const minProb=parseInt(document.getElementById('forecast-prob-filter').value)||0;const svcKey=document.getElementById('forecast-svc-filter').value;const rgb=SVC_COLORS[svcKey]||SVC_COLORS.all;function oppVal(o){return svcKey==='all'?(o.value||0):(o[svcKey]||0);}let data=opps.filter(o=>{if(isDead(o.stage))return false;if(stageView==='active'&&!isActive(o.stage))return false;if(stageView==='contract'&&!isContract(o.stage))return false;if((o.prob||0)<minProb)return false;if(oppVal(o)<=0)return false;if(!parseCloseDate(o.close))return false;return(o.months||1)>0;});const chart=document.getElementById('forecast-chart');if(!data.length){chart.innerHTML='<div class="forecast-empty">No data for this combination.</div>';['fc-3mo','fc-6mo','fc-12mo'].forEach(id=>{document.getElementById(id).textContent='—';});return;}const now=new Date();const ws=new Date(now.getFullYear(),now.getMonth(),1);const months=Array.from({length:18},(_,i)=>{const d=new Date(ws);d.setMonth(d.getMonth()+i);return d;});function sched(o){const cd=parseCloseDate(o.close);if(!cd)return null;const dur=Math.max(1,o.months||1);const monthly=oppVal(o)/dur;const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);const end=new Date(start);end.setMonth(end.getMonth()+dur-1);return{start,end,monthly,dur};}data.sort((a,b)=>(parseCloseDate(a.close)||0)-(parseCloseDate(b.close)||0));const totals=months.map(m=>{let s=0;data.forEach(o=>{const sc=sched(o);if(sc&&m>=sc.start&&m<=sc.end)s+=sc.monthly;});return s;});const maxTotal=Math.max(...totals,1);const fmtMo=d=>d.toLocaleDateString('en-US',{month:'short',year:'2-digit'});const isCurMo=d=>d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();document.getElementById('fc-3mo').textContent=fmtMoney(totals.slice(0,3).reduce((a,b)=>a+b,0));document.getElementById('fc-6mo').textContent=fmtMoney(totals.slice(0,6).reduce((a,b)=>a+b,0));document.getElementById('fc-12mo').textContent=fmtMoney(totals.slice(0,12).reduce((a,b)=>a+b,0));let html='';html+='<div style="display:flex;margin-bottom:6px;padding-left:200px;">';months.forEach(m=>{const cur=isCurMo(m);html+=`<div style="flex:1;min-width:60px;text-align:center;font-size:10px;font-weight:${cur?700:500};color:${cur?`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`:'var(--text2)'};text-transform:uppercase;letter-spacing:.04em">${fmtMo(m)}</div>`;});html+='</div><div style="display:flex;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:.5px solid var(--border)"><div style="width:200px;flex-shrink:0;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;padding-right:12px">Monthly total</div><div style="display:flex;flex:1">';totals.forEach(t=>{const c=t>0?`rgba(${rgb[0]},${rgb[1]},${rgb[2]},1)`:'var(--text3)';html+=`<div style="flex:1;min-width:60px;text-align:center;font-size:11px;font-weight:${t>0?600:400};color:${c}">${t>0?fmtMoney(t):'—'}</div>`;});html+='</div></div>';const groups=new Map();data.forEach(o=>{const cd=parseCloseDate(o.close);if(!cd)return;const key=`${cd.getFullYear()}-${String(cd.getMonth()+1).padStart(2,'0')}`;const lbl=cd.toLocaleDateString('en-US',{month:'long',year:'numeric'});if(!groups.has(key))groups.set(key,{lbl,items:[]});groups.get(key).items.push(o);});[...groups.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([,g])=>{html+=`<div class="forecast-section-header">Closing ${esc(g.lbl)}</div>`;g.items.forEach(o=>{const s=sched(o);if(!s)return;html+='<div style="display:flex;align-items:center;margin-bottom:5px"><div style="width:200px;flex-shrink:0;padding-right:12px;overflow:hidden"><div style="font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.client)}</div><div style="font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.name)}</div></div><div style="display:flex;flex:1;gap:2px">';months.forEach(m=>{const inR=m>=s.start&&m<=s.end;const isF=m.getTime()===s.start.getTime();const isL=m.getTime()===s.end.getTime();const cur=isCurMo(m);if(inR){const alpha=Math.max(.18,Math.min(.85,s.monthly/(maxTotal/Math.max(data.length,1)*3+1)))*.65+.18;const rr=(isF&&isL)?'4px':isF?'4px 0 0 4px':isL?'0 4px 4px 0':'0';html+=`<div style="flex:1;min-width:60px;height:26px;border-radius:${rr};background:rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha});border:${cur?`1.5px solid rgba(${rgb[0]},${rgb[1]},${rgb[2]},.9)`:'1.5px solid transparent'};display:flex;align-items:center;justify-content:center" title="${esc(o.client)}: ${fmtMoney(s.monthly)}/mo"><span style="font-size:9px;font-weight:600;color:#fff">${s.monthly>=1000?fmtMoney(s.monthly):''}</span></div>`;}else{html+=`<div style="flex:1;min-width:60px;height:26px;border:${cur?'1.5px solid var(--blue)':'none'}"></div>`;} });html+='</div></div>';});});chart.innerHTML=html;}
+function renderForecast(){const stageView=document.getElementById('forecast-stage-filter').value;const minProb=parseInt(document.getElementById('forecast-prob-filter').value)||0;const svcKey=document.getElementById('forecast-svc-filter').value;const rgb=SVC_COLORS[svcKey]||SVC_COLORS.all;function oppVal(o){return svcKey==='all'?(o.value||0):(o[svcKey]||0);}let data=opps.filter(o=>{if(isDead(o.stage))return false;if(stageView==='active'&&!isActive(o.stage))return false;if(stageView==='contract'&&!isContract(o.stage))return false;if((o.prob||0)<minProb)return false;if(oppVal(o)<=0)return false;if(!parseCloseDate(o.close))return false;return(o.months||1)>0;});const chart=document.getElementById('forecast-chart');if(!data.length){chart.innerHTML='<div class="forecast-empty">No data for this combination.</div>';['fc-3mo','fc-6mo','fc-12mo'].forEach(id=>{document.getElementById(id).textContent='—';});return;}const now=new Date();const ws=new Date(now.getFullYear(),now.getMonth(),1);const months=Array.from({length:18},(_,i)=>{const d=new Date(ws);d.setMonth(d.getMonth()+i);return d;});function sched(o){const cd=parseCloseDate(o.close);if(!cd)return null;const dur=Math.max(1,o.months||1);const monthly=oppVal(o)/dur;const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);const end=new Date(start);end.setMonth(end.getMonth()+dur-1);return{start,end,monthly,dur};}data.sort((a,b)=>(parseCloseDate(a.close)||0)-(parseCloseDate(b.close)||0));const totals=months.map(m=>{let s=0;data.forEach(o=>{const sc=sched(o);if(sc&&m>=sc.start&&m<=sc.end)s+=sc.monthly;});return s;});const maxTotal=Math.max(...totals,1);const fmtMo=d=>d.toLocaleDateString('en-US',{month:'short',year:'2-digit'});const isCurMo=d=>d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();document.getElementById('fc-3mo').textContent=fmtMoney(totals.slice(0,3).reduce((a,b)=>a+b,0));document.getElementById('fc-6mo').textContent=fmtMoney(totals.slice(0,6).reduce((a,b)=>a+b,0));document.getElementById('fc-12mo').textContent=fmtMoney(totals.slice(0,12).reduce((a,b)=>a+b,0));let html='';html+='<div style="display:flex;margin-bottom:6px;padding-left:200px;">';months.forEach(m=>{const cur=isCurMo(m);html+=`<div style="flex:1;min-width:60px;text-align:center;font-size:10px;font-weight:${cur?700:500};color:${cur?`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`:'var(--text2)'};text-transform:uppercase;letter-spacing:.04em">${fmtMo(m)}</div>`;});html+='</div><div style="display:flex;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:.5px solid var(--border)"><div style="width:200px;flex-shrink:0;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;padding-right:12px">Monthly total</div><div style="display:flex;flex:1">';totals.forEach(t=>{const c=t>0?`rgba(${rgb[0]},${rgb[1]},${rgb[2]},1)`:'var(--text3)';html+=`<div style="flex:1;min-width:60px;text-align:center;font-size:11px;font-weight:${t>0?600:400};color:${c}">${t>0?fmtMoney(t):'—'}</div>`;});html+='</div></div>';const groups=new Map();data.forEach(o=>{const cd=parseCloseDate(o.close);if(!cd)return;const key=`${cd.getFullYear()}-${String(cd.getMonth()+1).padStart(2,'0')}`;const lbl=cd.toLocaleDateString('en-US',{month:'long',year:'numeric'});if(!groups.has(key))groups.set(key,{lbl,items:[]});groups.get(key).items.push(o);});[...groups.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([,g])=>{html+=`<div class="forecast-section-header">Closing ${esc(g.lbl)}</div>`;g.items.forEach(o=>{const s=sched(o);if(!s)return;html+=`<div style="display:flex;align-items:center;margin-bottom:5px"><div style="width:200px;flex-shrink:0;padding-right:12px;overflow:hidden"><div style="font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.client)}</div><div style="font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.name)}</div></div><div style="display:flex;flex:1;gap:2px">';months.forEach(m=>{const inR=m>=s.start&&m<=s.end;const isF=m.getTime()===s.start.getTime();const isL=m.getTime()===s.end.getTime();const cur=isCurMo(m);if(inR){const alpha=Math.max(.18,Math.min(.85,s.monthly/(maxTotal/Math.max(data.length,1)*3+1)))*.65+.18;const rr=(isF&&isL)?'4px':isF?'4px 0 0 4px':isL?'0 4px 4px 0':'0';html+=`<div style="flex:1;min-width:60px;height:26px;border-radius:${rr};background:rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha});border:${cur?`1.5px solid rgba(${rgb[0]},${rgb[1]},${rgb[2]},.9)`:'1.5px solid transparent'};display:flex;align-items:center;justify-content:center" title="${esc(o.client)}: ${fmtMoney(s.monthly)}/mo"><span style="font-size:9px;font-weight:600;color:#fff">${s.monthly>=1000?fmtMoney(s.monthly):''}</span></div>`;}else{html+=`<div style="flex:1;min-width:60px;height:26px;border:${cur?'1.5px solid var(--blue)':'none'}"></div>`;} });html+='</div></div>';});});chart.innerHTML=html;}
 
 function showPTab(name,el){document.querySelectorAll('#p-tabs .tab').forEach(t=>t.classList.remove('active'));if(el)el.classList.add('active');else document.querySelectorAll('#p-tabs .tab').forEach(t=>{if(t.getAttribute('onclick')&&t.getAttribute('onclick').includes("'"+name+"'"))t.classList.add('active');});document.querySelectorAll('#section-pipeline .panel').forEach(p=>p.classList.remove('active'));document.getElementById('p-panel-'+name).classList.add('active');if(name!=='closed2026'){document.getElementById('mc-newbiz2026').classList.remove('active-filter');document.getElementById('mc-upsell2026').classList.remove('active-filter');}else renderClosed2026();}
 function showPLoading(){document.getElementById('pipeline-board').innerHTML='<div class="state-msg"><div class="spinner"></div><h3>Loading…</h3><p>Fetching from Google Sheets</p></div>';document.getElementById('value-bars').innerHTML='';document.getElementById('prob-grid').innerHTML='';document.getElementById('updated-list').innerHTML='';document.getElementById('closed2026-list').innerHTML='';document.getElementById('opp-badge').textContent='Loading…';document.getElementById('opp-badge').className='bdg bdg-blue';}
@@ -845,42 +890,77 @@ function renderCapAll(){
 
 function renderCapSummary(){
   const all = getFilteredOpps();
-  const totalPipeHrs = DISCIPLINES.reduce((s,d)=>s+discTotalHours(d,all),0);
-  const wtdPipeHrs   = DISCIPLINES.reduce((s,d)=>s+discWeightedHours(d,all),0);
-  const totalCap     = totalTeamAvail();
-  const totalLogged  = totalTeamLogged();
-  const headroom     = totalCap - totalLogged;
+  const now = new Date();
+  const curMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  function oppSchedHours(o, disc){
+    const cd=parseCloseDate(o.close); if(!cd) return 0;
+    const dur=Math.max(1,o.months||1);
+    const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);
+    const end=new Date(start); end.setMonth(end.getMonth()+dur-1);
+    if(curMonthStart<start||curMonthStart>end) return 0;
+    const h=oppToDiscHours(o);
+    return ((h[disc]||0)/dur)*((o.prob||0)/100);
+  }
+
+  const curMonthPipeHrs = DISCIPLINES.reduce((s,d)=>s+all.reduce((ss,o)=>ss+oppSchedHours(o,d),0),0);
+  const totalCap    = totalTeamAvail();
+  const totalLogged = totalTeamLogged();
+  const headroom    = totalCap - totalLogged;
 
   document.getElementById('cap-summary').innerHTML=`
     <div class="mc"><div class="mc-lbl">Available Billable Hours</div><div class="mc-val">${Math.round(totalCap).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${fullRoster().length} people · sum of individual targets</div></div>
     <div class="mc"><div class="mc-lbl">Hours Logged This Month</div><div class="mc-val">${Math.round(totalLogged).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${(totalCap>0?(totalLogged/totalCap*100):0).toFixed(1)}% of available capacity</div></div>
-    <div class="mc"><div class="mc-lbl">Pipeline Hours (wtd)</div><div class="mc-val">${Math.round(wtdPipeHrs).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">from ${all.length} opps at $${HOURLY_RATE}/hr</div></div>
+    <div class="mc"><div class="mc-lbl">Pipeline Hours This Month</div><div class="mc-val">${Math.round(curMonthPipeHrs).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">from active opps · wtd by probability</div></div>
     <div class="mc"><div class="mc-lbl">Remaining Headroom</div><div class="mc-val" style="color:${headroom<0?'var(--red)':headroom<totalCap*.1?'var(--amber)':'inherit'}">${Math.abs(Math.round(headroom)).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${headroom<0?'over capacity this month':'available billable hrs remaining'}</div></div>
   `;
 }
 
 function renderCapDiscCards(){
   const all = getFilteredOpps();
+  const now = new Date();
+  const curMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  function discCurMonthPipeHrs(disc){
+    return all.reduce((s,o)=>{
+      const cd=parseCloseDate(o.close); if(!cd) return s;
+      const dur=Math.max(1,o.months||1);
+      const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);
+      const end=new Date(start); end.setMonth(end.getMonth()+dur-1);
+      if(curMonthStart<start||curMonthStart>end) return s;
+      const h=oppToDiscHours(o);
+      return s+((h[disc]||0)/dur)*((o.prob||0)/100);
+    },0);
+  }
+
   document.getElementById('cap-disc-cards').innerHTML = DISCIPLINES.map(d=>{
-    const cap    = rosterCap(d);      // sum of availBillable for this discipline
-    const logged = rosterLogged(d);   // sum of hoursThisMonth
-    const wtdH   = discWeightedHours(d,all);
-    const pctLog = cap>0?Math.min(logged/cap*100,100):0;
-    const pctPip = cap>0?Math.min(wtdH/cap*100,100):0;
-    const avail  = cap - logged;
-    const cnt    = rosterForDisc(d).length;
-    const barColor = pctLog>=100?'var(--red)':pctLog>=90?'var(--amber)':pctLog>=70?'var(--green)':'var(--blue)';
+    const cap     = rosterCap(d);
+    const logged  = rosterLogged(d);
+    const planned = plannedByDisc[d]||0;
+    const wtdH    = discCurMonthPipeHrs(d);
+    const pctLog  = cap>0?Math.min(logged/cap*100,100):0;
+    const pctPlan = cap>0?Math.min(planned/cap*100,100):0;
+    const pctPip  = cap>0?Math.min(wtdH/cap*100,100):0;
+    const avail   = cap - logged;
+    const cnt     = rosterForDisc(d).length;
+    const barColor  = pctLog>=100?'var(--red)':pctLog>=90?'var(--amber)':pctLog>=70?'var(--green)':'var(--blue)';
+    const planColor = pctPlan>=100?'var(--red)':pctPlan>=90?'var(--amber)':'#F3812C';
+    const plannedBar = planned>0?`
+      <div class="cap-bar-lbl"><span>Hours planned (current month)</span><span>${Math.round(planned)}h / ${Math.round(cap)}h avail</span></div>
+      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPlan}%;background:${planColor}"></div></div>`:'';
     return `<div class="cap-disc-card">
       <div class="cap-disc-top">
-        <div class="cap-disc-name" style="color:${DISC_COLORS[d]}">${d}</div>
+        <div class="cap-disc-name" style="color:#F3812C">${d}</div>
         <div class="cap-disc-ppl">${cnt} ${cnt===1?'person':'people'}</div>
       </div>
+      ${plannedBar}
       <div class="cap-bar-lbl"><span>Hours logged</span><span>${Math.round(logged)}h / ${Math.round(cap)}h avail</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctLog}%;background:${barColor}"></div></div>
-      <div class="cap-bar-lbl"><span>Pipeline demand (wtd)</span><span>${Math.round(wtdH)}h</span></div>
-      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPip}%;background:${DISC_COLORS[d]};opacity:.45"></div></div>
+      <div class="cap-bar-lbl"><span>Pipeline demand this month (wtd)</span><span>${Math.round(wtdH)}h</span></div>
+      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPip}%;background:#F3812C;opacity:.45"></div></div>
       <div class="cap-disc-chips">
         <span class="cap-chip">${Math.round(logged)}h logged</span>
+        ${planned>0?`<span class="cap-chip" style="color:${planColor}">${Math.round(planned)}h planned</span>`:''}
         <span class="cap-chip">${Math.round(wtdH)}h pipeline</span>
         <span class="cap-chip" style="color:${avail<0?'var(--red)':'var(--text2)'}">${Math.abs(Math.round(avail))}h ${avail<0?'over':'avail'}</span>
       </div>
@@ -890,36 +970,39 @@ function renderCapDiscCards(){
 
 function renderCapHeatmap(){
   const now=new Date();
+  const minProb=parseInt(document.getElementById('hm-prob-filter')?.value)||0;
   const months=[];
-  for(let i=0;i<6;i++){const d=new Date(now.getFullYear(),now.getMonth()+i,1);months.push(d.toLocaleString('default',{month:'short',year:'2-digit'}));}
+  for(let i=0;i<6;i++){const d=new Date(now.getFullYear(),now.getMonth()+i,1);months.push(d);}
 
-  // For each month, estimate load from opps whose service period overlaps
   function discMonthHours(disc, monthDate){
     let total=0;
-    opps.filter(o=>!isDead(o.stage)&&(o.value||0)>0).forEach(o=>{
+    opps.filter(o=>!isDead(o.stage)&&(o.value||0)>0&&(o.prob||0)>=minProb).forEach(o=>{
       const cd=parseCloseDate(o.close); if(!cd) return;
       const dur=Math.max(1,o.months||1);
       const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);
       const end=new Date(start); end.setMonth(end.getMonth()+dur-1);
       if(monthDate>=start&&monthDate<=end){
         const h=oppToDiscHours(o);
-        total+=(h[disc]||0)/dur;
+        total+=((h[disc]||0)/dur)*((o.prob||0)/100);
       }
     });
     return total;
   }
 
+  const fmtMo=d=>d.toLocaleDateString('en-US',{month:'short',year:'2-digit'});
+  const isCurMo=d=>d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
+
   let html=`<div class="cap-hm-grid" style="grid-template-columns:130px repeat(6,1fr)">`;
-  html+=`<div></div>${months.map(m=>`<div class="cap-hm-hdr">${m}</div>`).join('')}`;
+  html+=`<div></div>${months.map(m=>`<div class="cap-hm-hdr" style="${isCurMo(m)?'color:var(--text);font-weight:700':''}">${fmtMo(m)}</div>`).join('')}`;
   DISCIPLINES.forEach(d=>{
     html+=`<div class="cap-hm-lbl">${d}</div>`;
-    const cap=rosterCap(d)||1;  // sum of Available Billable Hours for this discipline
-    months.forEach((m,i)=>{
-      const mDate=new Date(now.getFullYear(),now.getMonth()+i,1);
-      const h=discMonthHours(d,mDate);
+    const cap=rosterCap(d)||1;
+    months.forEach(m=>{
+      const h=discMonthHours(d,m);
       const ratio=h/cap;
       const cls=ratio>=1?'hm4':ratio>=.9?'hm3':ratio>=.75?'hm2':ratio>=.5?'hm1':'hm0';
-      html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${m}: ${Math.round(h)}h needed / ${Math.round(cap)}h capacity (${(ratio*100).toFixed(0)}%)">${(ratio*100).toFixed(0)}%</div>`;
+      const cur=isCurMo(m);
+      html+=`<div class="cap-hm-cell ${cls}" style="${cur?'outline:2px solid var(--blue);outline-offset:-2px':''}" title="${d} · ${fmtMo(m)}: ${Math.round(h)}h pipeline (wtd) / ${Math.round(cap)}h capacity (${(ratio*100).toFixed(0)}%)">${(ratio*100).toFixed(0)}%</div>`;
     });
   });
   html+=`</div>
@@ -929,6 +1012,7 @@ function renderCapHeatmap(){
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FBCFA0"></div>75–89%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#F3812C"></div>90–99%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#CC2E2E"></div>≥ 100%</div>
+    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Hours weighted by close probability · service starts month after close</div>
   </div>`;
   document.getElementById('cap-heatmap').innerHTML=html;
 }
