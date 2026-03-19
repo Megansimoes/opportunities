@@ -411,6 +411,15 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
       <div class="section-title"><span id="disc-cap-month"></span> Discipline Capacity</div>
       <div class="section-sub" id="disc-cap-sub">Active pipeline load + roster utilization</div>
     </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <label style="font-size:12px;color:var(--text2)">Min probability:</label>
+      <select id="disc-prob-filter" onchange="renderCapDiscCards()" style="font-size:12px;padding:4px 8px;border-radius:6px;border:.5px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--font)">
+        <option value="0">All probabilities</option>
+        <option value="30">30%+</option><option value="40">40%+</option><option value="50">50%+</option>
+        <option value="60">60%+</option><option value="70">70%+</option><option value="80">80%+</option>
+        <option value="90">90%+</option><option value="100">100%</option>
+      </select>
+    </div>
     <div style="display:flex;background:var(--surface2);border:.5px solid var(--border);border-radius:8px;padding:3px;gap:2px">
       <button id="cap-month-cur" onclick="setCapMonth('current')" style="padding:4px 14px;border-radius:6px;font-size:12px;font-weight:500;border:none;cursor:pointer;font-family:var(--font);background:var(--text);color:var(--surface);transition:all .15s">Current</button>
       <button id="cap-month-next" onclick="setCapMonth('next')" style="padding:4px 14px;border-radius:6px;font-size:12px;font-weight:500;border:none;cursor:pointer;font-family:var(--font);background:transparent;color:var(--text2);transition:all .15s">Next Month</button>
@@ -958,59 +967,70 @@ function renderCapSummary(){
 function renderCapDiscCards(){
   const all = getFilteredOpps();
   const now = new Date();
-  // Which month are we showing?
   const isNext = selectedCapMonth === 'next';
+  const minProb = parseInt(document.getElementById('disc-prob-filter')?.value)||0;
+
   const viewMonth = isNext
     ? new Date(now.getFullYear(), now.getMonth()+1, 1)
     : new Date(now.getFullYear(), now.getMonth(), 1);
 
+  // Full (unweighted) pipeline hours for the view month, filtered by min probability
   function discViewMonthPipeHrs(disc){
     return all.reduce((s,o)=>{
+      if((o.prob||0) < minProb) return s;
       const cd=parseCloseDate(o.close); if(!cd) return s;
       const dur=Math.max(1,o.months||1);
       const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);
       const end=new Date(start); end.setMonth(end.getMonth()+dur-1);
       if(viewMonth<start||viewMonth>end) return s;
       const h=oppToDiscHours(o);
-      return s+((h[disc]||0)/dur)*((o.prob||0)/100);
+      return s+(h[disc]||0)/dur; // full hours, not weighted
     },0);
   }
 
-  // Use planned data for the selected month
   const activePlanned = isNext ? plannedNextByDisc : plannedByDisc;
 
   document.getElementById('cap-disc-cards').innerHTML = DISCIPLINES.map(d=>{
     const cap     = rosterCap(d);
     const logged  = rosterLogged(d);
     const planned = activePlanned[d]||0;
-    const wtdH    = discViewMonthPipeHrs(d);
+    const pipeH   = discViewMonthPipeHrs(d); // only shown in next month view
     const pctLog  = cap>0?Math.min(logged/cap*100,100):0;
     const pctPlan = cap>0?Math.min(planned/cap*100,100):0;
-    const pctPip  = cap>0?Math.min(wtdH/cap*100,100):0;
+    const pctPip  = cap>0?Math.min(pipeH/cap*100,100):0;
     const avail   = cap - logged;
     const cnt     = rosterForDisc(d).length;
     const barColor  = pctLog>=100?'var(--red)':pctLog>=90?'var(--amber)':pctLog>=70?'var(--green)':'var(--blue)';
     const planColor = pctPlan>=100?'var(--red)':pctPlan>=90?'var(--amber)':'#F3812C';
-    const loggedLabel = isNext ? 'Hours logged (current month)' : 'Hours logged';
+
     const plannedBar = planned>0?`
       <div class="cap-bar-lbl"><span>Hours planned</span><span>${Math.round(planned)}h / ${Math.round(cap)}h avail</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPlan}%;background:${planColor}"></div></div>`:'';
+
+    const loggedBar = !isNext?`
+      <div class="cap-bar-lbl"><span>Hours logged</span><span>${Math.round(logged)}h / ${Math.round(cap)}h avail</span></div>
+      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctLog}%;background:${barColor}"></div></div>`:'';
+
+    const pipeBar = isNext?`
+      <div class="cap-bar-lbl"><span>Pipeline demand (${minProb>0?minProb+'%+':'all probs'})</span><span>${Math.round(pipeH)}h</span></div>
+      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPip}%;background:#F3812C;opacity:.55"></div></div>`:'';
+
+    const chips = isNext
+      ? `<span class="cap-chip">${Math.round(planned||0)}h planned</span>
+         <span class="cap-chip">${Math.round(pipeH)}h pipeline</span>`
+      : `<span class="cap-chip">${Math.round(logged)}h logged</span>
+         ${planned>0?`<span class="cap-chip" style="color:${planColor}">${Math.round(planned)}h planned</span>`:''}
+         <span class="cap-chip" style="color:${avail<0?'var(--red)':'var(--text2)'}">${Math.abs(Math.round(avail))}h ${avail<0?'over':'avail'}</span>`;
+
     return `<div class="cap-disc-card">
       <div class="cap-disc-top">
         <div class="cap-disc-name" style="color:#F3812C">${d}</div>
         <div class="cap-disc-ppl">${cnt} ${cnt===1?'person':'people'}</div>
       </div>
       ${plannedBar}
-      <div class="cap-bar-lbl"><span>${loggedLabel}</span><span>${Math.round(logged)}h / ${Math.round(cap)}h avail</span></div>
-      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctLog}%;background:${barColor}"></div></div>
-      <div class="cap-bar-lbl"><span>Pipeline demand this month (wtd)</span><span>${Math.round(wtdH)}h</span></div>
-      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPip}%;background:#F3812C;opacity:.45"></div></div>
-      <div class="cap-disc-chips">
-        <span class="cap-chip">${Math.round(logged)}h logged</span>
-        ${planned>0?`<span class="cap-chip" style="color:${planColor}">${Math.round(planned)}h planned</span>`:''}
-        <span class="cap-chip">${Math.round(wtdH)}h pipeline</span>
-        <span class="cap-chip" style="color:${avail<0?'var(--red)':'var(--text2)'}">${Math.abs(Math.round(avail))}h ${avail<0?'over':'avail'}</span>
-      </div>
+      ${loggedBar}
+      ${pipeBar}
+      <div class="cap-disc-chips">${chips}</div>
     </div>`;
   }).join('');
 }
