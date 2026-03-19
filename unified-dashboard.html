@@ -687,10 +687,22 @@ async function loadUtilizationData(){
       lookup[name]=(lookup[name]||0)+actual;
     });
 
-    // Stamp actualBillable onto each roster person by name (case-insensitive)
+    const utilKeys = Object.keys(lookup);
+    console.log('[Utilization] names in tab:', utilKeys);
+    console.log('[Roster] names:', roster.map(p=>p.name));
+
+    // Robust name matching: exact → trimmed lower → first+last only
+    function normName(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
+    function firstLast(s){ const p=normName(s).split(' '); return p[0]+' '+p[p.length-1]; }
+
     roster.forEach(p=>{
-      const key=Object.keys(lookup).find(k=>k.toLowerCase()===p.name.toLowerCase());
+      const pn = normName(p.name);
+      const pfl = firstLast(p.name);
+      // Try exact normalized match first, then first+last only
+      let key = utilKeys.find(k=>normName(k)===pn);
+      if(!key) key = utilKeys.find(k=>firstLast(k)===pfl);
       p.actualBillable = key!==undefined ? lookup[key] : null;
+      console.log('[Match]', p.name, '->', key||'NO MATCH', '=', p.actualBillable);
     });
   }catch(e){console.warn('Utilization load failed:',e);}
 }
