@@ -479,7 +479,7 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
   </div>
 
   <div class="footer">
-    <p>Pipeline hours at <strong>$180/hr</strong> · Logged hours = <strong>Actual_Billable_Hours</strong> summed from Utilization tab · Capacity = Available Billable Hours from Roster tab</p>
+    <p>Pipeline hours calculated at <strong>$180/hr blended rate</strong> · Capacity = Available Billable Hours per person from Roster tab</p>
   </div>
 
 </div>
@@ -597,99 +597,97 @@ async function loadPipelineData(){
 
 async function loadRosterData(){
   const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
+  try{
+    const r=await fetch(base+ROSTER_SHEET_NAME);
+    if(!r.ok) return;
+    const t=await r.text();
+    const j=JSON.parse(t.replace(/^.*?\(|\);?$/gs,''));
+    if(!j.table||!j.table.rows||!j.table.cols) return;
 
-  // Helper: fetch a gviz sheet tab, return parsed table or null
-  async function fetchTab(name){
-    try{
-      const r=await fetch(base+encodeURIComponent(name));
-      if(!r.ok) return null;
-      const t=await r.text();
-      const j=JSON.parse(t.replace(/^.*?\(|\);?$/gs,''));
-      return (j.table?.cols && j.table?.rows) ? j.table : null;
-    }catch(e){ return null; }
-  }
-
-  // Load Roster and Utilization tabs in parallel
-  const [rosterTable, utilTable] = await Promise.all([
-    fetchTab(ROSTER_SHEET_NAME),
-    fetchTab('Utilization')
-  ]);
-
-  if(!rosterTable){ console.warn('Roster tab not found'); return; }
-
-  // ── Build column-index helper ──────────────────────────────
-  function makeCI(table){
-    const cols=table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
-    return function ci(candidates){
+    // Build header->index map from column labels (case-insensitive, partial match)
+    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    function ci(candidates){
       for(const c of candidates){
         const found=cols.find(col=>col.label.includes(c.toLowerCase()));
         if(found!==undefined) return found.i;
       }
       return -1;
-    };
-  }
-
-  // ── Sum Actual_Billable_Hours by User_Name from Utilization tab ──
-  const actualByName = {}; // { 'Alex Duggan': 12.5, ... }
-  if(utilTable){
-    const uCI = makeCI(utilTable);
-    const iUser   = uCI(['user_name','user name','username','user']);
-    const iActual = uCI(['actual_billable_hour','actual billable hour','actual billable']);
-    if(iUser>=0 && iActual>=0){
-      utilTable.rows.forEach(r=>{
-        const nameVal = r.c[iUser]?.v;
-        const hrsVal  = r.c[iActual]?.v;
-        if(!nameVal) return;
-        const name = String(nameVal).trim();
-        const hrs  = parseFloat(String(hrsVal||'0').replace(/[^0-9.-]/g,''))||0;
-        actualByName[name] = (actualByName[name]||0) + hrs;
-      });
     }
-  }
+    const iName  = ci(['name']);
+    const iTitle = ci(['title','role']);
+    const iDisc  = ci(['discipline']);
+    const iUtil  = ci(['utilization target','utilization','util']);
+    const iHours = ci(['hours per current','hours this month','hours per month','current month']);
+    const iAvail = ci(['available billable','available bill','avail bill']);
+    const iMgr   = ci(['manager','is manager','mgr']);
 
-  // ── Parse Roster tab ──────────────────────────────────────
-  const rCI = makeCI(rosterTable);
-  const iName  = rCI(['name']);
-  const iTitle = rCI(['title','role']);
-  const iDisc  = rCI(['discipline']);
-  const iUtil  = rCI(['utilization target','utilization','util']);
-  const iHours = rCI(['hours per current','hours this month','hours per month','current month']);
-  const iAvail = rCI(['available billable','available bill','avail bill']);
-  const iMgr   = rCI(['manager','is manager','mgr']);
-
-  roster = rosterTable.rows
-    .filter(r=>r.c[iName>=0?iName:0]?.v)
-    .map((r,i)=>{
-      const cv    = idx => idx>=0 && r.c[idx]!=null ? r.c[idx].v : null;
-      const numStr= v   => parseFloat(String(v||'0').replace(/[^0-9.-]/g,''))||0;
+    roster=j.table.rows.filter(r=>r.c[iName>=0?iName:0]?.v).map((r,i)=>{
+      const cv=idx=>idx>=0&&r.c[idx]!=null?r.c[idx].v:null;
+      const numStr=v=>parseFloat(String(v||'0').replace(/[^0-9.-]/g,''))||0;
       const availBillable  = numStr(cv(iAvail));
       const hoursThisMonth = numStr(cv(iHours));
       const rawUtil        = numStr(cv(iUtil));
-      const utilPct        = rawUtil>1 ? rawUtil : rawUtil*100;
-      const name           = String(cv(iName)||'').trim();
-
-      // Use Utilization tab actual hours if available, fall back to Roster column
-      const actualBillable = actualByName[name] ?? hoursThisMonth;
-
+      const utilPct        = rawUtil>1 ? rawUtil : rawUtil*100; // normalise to 0-100
       return {
-        id:              i+1,
-        name,
-        role:            String(cv(iTitle)||''),
-        discipline:      String(cv(iDisc)||''),
-        utilTarget:      utilPct,
-        hoursThisMonth:  actualBillable,   // ← actual logged billable from Utilization tab
-        availBillable,                     // ← capacity ceiling from Roster tab
-        isManager:       String(cv(iMgr)||'').toUpperCase()==='Y'
+        id:            i+1,
+        name:          String(cv(iName)||''),
+        role:          String(cv(iTitle)||''),
+        discipline:    String(cv(iDisc)||''),
+        utilTarget:    utilPct,
+        hoursThisMonth,
+        availBillable,   // ← capacity denominator for discipline cards
+        isManager:     String(cv(iMgr)||'').toUpperCase()==='Y'
       };
-    })
-    .filter(r=>!r.isManager && r.name);
+    }).filter(r=>!r.isManager&&r.name);
 
-  const utilCount = Object.keys(actualByName).length;
-  renderCapAll();
-  document.getElementById('cap-badge').textContent=`${roster.length} team members`;
-  document.getElementById('cap-badge').className='bdg bdg-green';
-  document.getElementById('cap-sync-txt').textContent=
-    `${roster.length} people synced · ${utilCount} with logged hours from Utilization tab`;
+    // After roster parses, fetch utilization actuals and merge in
+    await loadUtilizationData();
+    renderCapAll();
+    document.getElementById('cap-badge').textContent=`${roster.length} team members`;
+    document.getElementById('cap-badge').className='bdg bdg-green';
+    document.getElementById('cap-sync-txt').textContent=`${roster.length} people · actuals from Utilization tab`;
+  }catch(e){console.warn('Roster load failed:',e);}
+}
+
+async function loadUtilizationData(){
+  const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
+  try{
+    const r=await fetch(base+'Utilization');
+    if(!r.ok) return;
+    const t=await r.text();
+    const j=JSON.parse(t.replace(/^.*?\(|\);?$/gs,''));
+    if(!j.table||!j.table.rows||!j.table.cols) return;
+
+    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    function ci(candidates){
+      for(const c of candidates){
+        const found=cols.find(col=>col.label.includes(c.toLowerCase()));
+        if(found!==undefined) return found.i;
+      }
+      return -1;
+    }
+    const iName   = ci(['name']);
+    const iActual = ci(['actual_billable','actual billable','actual bill']);
+
+    if(iName<0||iActual<0){
+      console.warn('Utilization tab: could not find Name or Actual_Billable_Hours columns. Found:', cols.map(c=>c.label));
+      return;
+    }
+
+    // Build name->actualBillable lookup (sum if person appears on multiple rows)
+    const lookup={};
+    j.table.rows.filter(r=>r.c[iName]?.v).forEach(r=>{
+      const name  =String(r.c[iName].v).trim();
+      const actual=parseFloat(String(r.c[iActual]?.v||'0').replace(/[^0-9.-]/g,''))||0;
+      lookup[name]=(lookup[name]||0)+actual;
+    });
+
+    // Stamp actualBillable onto each roster person by name (case-insensitive)
+    roster.forEach(p=>{
+      const key=Object.keys(lookup).find(k=>k.toLowerCase()===p.name.toLowerCase());
+      p.actualBillable = key!==undefined ? lookup[key] : null;
+    });
+  }catch(e){console.warn('Utilization load failed:',e);}
 }
 
 // CSV parsing
@@ -809,12 +807,13 @@ function discWeightedHours(disc, oppsArr){
 function rosterForDisc(disc){ return fullRoster().filter(r=>r.discipline===disc); }
 // Total available billable hours for a discipline (sum of each person's Available Billable Hours)
 function rosterCap(disc){ return rosterForDisc(disc).reduce((s,r)=>s+(r.availBillable||CAP_PER),0); }
-// Total hours this month logged for a discipline
-function rosterLogged(disc){ return rosterForDisc(disc).reduce((s,r)=>s+(r.hoursThisMonth||r.hours||0),0); }
+// Actual billable hours logged — uses Utilization tab's Actual_Billable_Hours, falls back to Roster's Hours per current month
+function personLogged(r){ return r.actualBillable!==null&&r.actualBillable!==undefined ? r.actualBillable : (r.hoursThisMonth||0); }
+function rosterLogged(disc){ return rosterForDisc(disc).reduce((s,r)=>s+personLogged(r),0); }
 // Total available billable hours across whole team
 function totalTeamAvail(){ return fullRoster().reduce((s,r)=>s+(r.availBillable||CAP_PER),0); }
 // Total hours logged across whole team
-function totalTeamLogged(){ return fullRoster().reduce((s,r)=>s+(r.hoursThisMonth||r.hours||0),0); }
+function totalTeamLogged(){ return fullRoster().reduce((s,r)=>s+personLogged(r),0); }
 
 function renderCapAll(){
   if(!opps.length) return;
@@ -967,7 +966,7 @@ function renderCapRoster(){
       <td style="color:${DISC_COLORS[p.discipline]||'var(--text)'};font-weight:500">${esc(p.discipline)}</td>
       <td style="color:var(--text2)">${esc(p.role)}</td>
       <td style="text-align:center">${utilDisplay}</td>
-      <td style="font-weight:500">${Math.round(logged)}h<span style="font-size:10px;color:var(--text3);display:block">actual billable</span></td>
+      <td style="font-weight:500">${p.actualBillable!==null&&p.actualBillable!==undefined ? Math.round(p.actualBillable)+'h' : '<span style="color:var(--text3)">—</span>'}</td>
       <td style="font-weight:500;color:var(--blue-tc)">${Math.round(avail)}h</td>
       <td>
         <div class="util-wrap">
