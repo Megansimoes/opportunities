@@ -580,9 +580,7 @@ async function loadPipelineData(){
   opps=mapRows(rows);
   if(!opps.length){showPError('0 records mapped.','Check column headers.');return;}
 
-  // Also try to load roster from same sheet
-  loadRosterData();
-
+  // Load roster + utilization in parallel with pipeline render
   populateOwners();
   renderPipelineAll();
   const now=new Date().toLocaleTimeString();
@@ -592,6 +590,9 @@ async function loadPipelineData(){
   document.getElementById('opp-badge').textContent=`${opps.length} records loaded`;
   document.getElementById('opp-badge').className='bdg bdg-green';
   setNavSync('live','Synced · '+now);
+
+  // Await roster+utilization so capacity section has real data
+  await loadRosterData();
   renderCapAll();
 }
 
@@ -601,7 +602,7 @@ async function loadRosterData(){
     const r=await fetch(base+ROSTER_SHEET_NAME);
     if(!r.ok) return;
     const t=await r.text();
-    const j=JSON.parse(t.replace(/^.*?\(|\);?$/gs,''));
+    const j=JSON.parse(t.slice(t.indexOf('(')+1, t.lastIndexOf(')')));
     if(!j.table||!j.table.rows||!j.table.cols) return;
 
     // Build header->index map from column labels (case-insensitive, partial match)
@@ -621,6 +622,8 @@ async function loadRosterData(){
     const iAvail = ci(['available billable','available bill','avail bill']);
     const iMgr   = ci(['manager','is manager','mgr']);
 
+    console.log('[Roster] columns found:', cols.map(c=>c.label));
+    console.log('[Roster] iName='+iName+' iTitle='+iTitle+' iDisc='+iDisc+' iUtil='+iUtil+' iHours='+iHours+' iAvail='+iAvail);
     roster=j.table.rows.filter(r=>r.c[iName>=0?iName:0]?.v).map((r,i)=>{
       const cv=idx=>idx>=0&&r.c[idx]!=null?r.c[idx].v:null;
       const numStr=v=>parseFloat(String(v||'0').replace(/[^0-9.-]/g,''))||0;
@@ -655,7 +658,7 @@ async function loadUtilizationData(){
     const r=await fetch(base+'Utilization');
     if(!r.ok) return;
     const t=await r.text();
-    const j=JSON.parse(t.replace(/^.*?\(|\);?$/gs,''));
+    const j=JSON.parse(t.slice(t.indexOf('(')+1, t.lastIndexOf(')')));
     if(!j.table||!j.table.rows||!j.table.cols) return;
 
     const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
@@ -669,8 +672,10 @@ async function loadUtilizationData(){
     const iName   = ci(['name']);
     const iActual = ci(['actual_billable','actual billable','actual bill']);
 
+    console.log('[Utilization] columns found:', cols.map(c=>c.label));
+    console.log('[Utilization] iName='+iName+' iActual='+iActual);
     if(iName<0||iActual<0){
-      console.warn('Utilization tab: could not find Name or Actual_Billable_Hours columns. Found:', cols.map(c=>c.label));
+      console.warn('[Utilization] Could not find required columns. Available:', cols.map(c=>c.label));
       return;
     }
 
