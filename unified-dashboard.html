@@ -455,7 +455,7 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
   <div class="panel" id="c-panel-roster">
     <div class="roster-note">
       Roster data is pulled from the <strong>Roster</strong> tab in your Google Sheet (same sheet as pipeline).
-      Columns: <strong>Name · Discipline · Role · Hours Logged · Is Manager (Y/N)</strong>.
+      Columns: <strong>Name · Title · Discipline · Utilization Target · Hours per current month · Available Billable Hours</strong>.
       Managers are excluded from capacity calculations.
     </div>
     <div class="filter-row">
@@ -752,14 +752,15 @@ const HOURLY_RATE = 180;
 const CAP_PER = 138.7;
 const DISC_MAP = {
   'Creative':       'svc_creative',
+  'Photo/Video':    'svc_photovideo',
   'Organic Social': 'svc_organicsocial',
   'Paid Media':     'svc_paidmedia',
   'PR':             'svc_pr',
   'Web':            'svc_web',
   'Client Services':'svc_clientsvc',
 };
-const DISCIPLINES = ['Paid Media','Client Services','PR','Web','Creative','Organic Social','Content/Strategy'];
-const DISC_COLORS = {'Paid Media':'#BA7517','Client Services':'#534AB7','PR':'#A32D2D','Web':'#185FA5','Creative':'#993556','Organic Social':'#1D9E75','Content/Strategy':'#888780'};
+const DISCIPLINES = ['Paid Media','Client Services','PR','Web','Creative','Photo/Video','Organic Social'];
+const DISC_COLORS = {'Paid Media':'#BA7517','Client Services':'#534AB7','PR':'#A32D2D','Web':'#185FA5','Creative':'#993556','Photo/Video':'#993556','Organic Social':'#1D9E75'};
 
 // Manual roster additions (editable in UI)
 let manualRoster = JSON.parse(localStorage.getItem('manual_roster')||'[]');
@@ -804,7 +805,7 @@ function discTotalHours(disc, oppsArr){
 function discWeightedHours(disc, oppsArr){
   return oppsArr.reduce((s,o)=>{ const h=oppToDiscHours(o); return s+((h[disc]||0)*(o.prob||0)/100); },0);
 }
-function rosterForDisc(disc){ return fullRoster().filter(r=>r.discipline===disc); }
+function rosterForDisc(disc){ const dl=disc.toLowerCase(); return fullRoster().filter(r=>(r.discipline||'').toLowerCase()===dl); }
 // Total available billable hours for a discipline (sum of each person's Available Billable Hours)
 function rosterCap(disc){ return rosterForDisc(disc).reduce((s,r)=>s+(r.availBillable||CAP_PER),0); }
 // Actual billable hours logged — uses Utilization tab's Actual_Billable_Hours, falls back to Roster's Hours per current month
