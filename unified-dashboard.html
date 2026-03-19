@@ -472,14 +472,14 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
     </div>
     <div class="cap-table-wrap">
       <table>
-        <thead><tr><th>Name</th><th>Discipline</th><th>Title</th><th>Util Target</th><th>Hours This Month</th><th>Available Billable Hrs</th><th>Utilization</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Discipline</th><th>Title</th><th>Util Target</th><th>Actual Billable Hrs</th><th>Available Billable Hrs</th><th>Utilization</th><th>Status</th><th></th></tr></thead>
         <tbody id="cap-roster-tbody"></tbody>
       </table>
     </div>
   </div>
 
   <div class="footer">
-    <p>Pipeline hours calculated at <strong>$180/hr blended rate</strong> · Capacity = Available Billable Hours per person from Roster tab</p>
+    <p>Pipeline hours at <strong>$180/hr</strong> · Logged hours = <strong>Actual_Billable_Hours</strong> summed from Utilization tab · Capacity = Available Billable Hours from Roster tab</p>
   </div>
 
 </div>
@@ -597,54 +597,99 @@ async function loadPipelineData(){
 
 async function loadRosterData(){
   const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
-  try{
-    const r=await fetch(base+ROSTER_SHEET_NAME);
-    if(!r.ok) return;
-    const t=await r.text();
-    const j=JSON.parse(t.replace(/^.*?\(|\);?$/gs,''));
-    if(!j.table||!j.table.rows||!j.table.cols) return;
 
-    // Build header->index map from column labels (case-insensitive, partial match)
-    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
-    function ci(candidates){
+  // Helper: fetch a gviz sheet tab, return parsed table or null
+  async function fetchTab(name){
+    try{
+      const r=await fetch(base+encodeURIComponent(name));
+      if(!r.ok) return null;
+      const t=await r.text();
+      const j=JSON.parse(t.replace(/^.*?\(|\);?$/gs,''));
+      return (j.table?.cols && j.table?.rows) ? j.table : null;
+    }catch(e){ return null; }
+  }
+
+  // Load Roster and Utilization tabs in parallel
+  const [rosterTable, utilTable] = await Promise.all([
+    fetchTab(ROSTER_SHEET_NAME),
+    fetchTab('Utilization')
+  ]);
+
+  if(!rosterTable){ console.warn('Roster tab not found'); return; }
+
+  // ── Build column-index helper ──────────────────────────────
+  function makeCI(table){
+    const cols=table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    return function ci(candidates){
       for(const c of candidates){
         const found=cols.find(col=>col.label.includes(c.toLowerCase()));
         if(found!==undefined) return found.i;
       }
       return -1;
-    }
-    const iName  = ci(['name']);
-    const iTitle = ci(['title','role']);
-    const iDisc  = ci(['discipline']);
-    const iUtil  = ci(['utilization target','utilization','util']);
-    const iHours = ci(['hours per current','hours this month','hours per month','current month']);
-    const iAvail = ci(['available billable','available bill','avail bill']);
-    const iMgr   = ci(['manager','is manager','mgr']);
+    };
+  }
 
-    roster=j.table.rows.filter(r=>r.c[iName>=0?iName:0]?.v).map((r,i)=>{
-      const cv=idx=>idx>=0&&r.c[idx]!=null?r.c[idx].v:null;
-      const numStr=v=>parseFloat(String(v||'0').replace(/[^0-9.-]/g,''))||0;
+  // ── Sum Actual_Billable_Hours by User_Name from Utilization tab ──
+  const actualByName = {}; // { 'Alex Duggan': 12.5, ... }
+  if(utilTable){
+    const uCI = makeCI(utilTable);
+    const iUser   = uCI(['user_name','user name','username','user']);
+    const iActual = uCI(['actual_billable_hour','actual billable hour','actual billable']);
+    if(iUser>=0 && iActual>=0){
+      utilTable.rows.forEach(r=>{
+        const nameVal = r.c[iUser]?.v;
+        const hrsVal  = r.c[iActual]?.v;
+        if(!nameVal) return;
+        const name = String(nameVal).trim();
+        const hrs  = parseFloat(String(hrsVal||'0').replace(/[^0-9.-]/g,''))||0;
+        actualByName[name] = (actualByName[name]||0) + hrs;
+      });
+    }
+  }
+
+  // ── Parse Roster tab ──────────────────────────────────────
+  const rCI = makeCI(rosterTable);
+  const iName  = rCI(['name']);
+  const iTitle = rCI(['title','role']);
+  const iDisc  = rCI(['discipline']);
+  const iUtil  = rCI(['utilization target','utilization','util']);
+  const iHours = rCI(['hours per current','hours this month','hours per month','current month']);
+  const iAvail = rCI(['available billable','available bill','avail bill']);
+  const iMgr   = rCI(['manager','is manager','mgr']);
+
+  roster = rosterTable.rows
+    .filter(r=>r.c[iName>=0?iName:0]?.v)
+    .map((r,i)=>{
+      const cv    = idx => idx>=0 && r.c[idx]!=null ? r.c[idx].v : null;
+      const numStr= v   => parseFloat(String(v||'0').replace(/[^0-9.-]/g,''))||0;
       const availBillable  = numStr(cv(iAvail));
       const hoursThisMonth = numStr(cv(iHours));
       const rawUtil        = numStr(cv(iUtil));
-      const utilPct        = rawUtil>1 ? rawUtil : rawUtil*100; // normalise to 0-100
-      return {
-        id:            i+1,
-        name:          String(cv(iName)||''),
-        role:          String(cv(iTitle)||''),
-        discipline:    String(cv(iDisc)||''),
-        utilTarget:    utilPct,
-        hoursThisMonth,
-        availBillable,   // ← capacity denominator for discipline cards
-        isManager:     String(cv(iMgr)||'').toUpperCase()==='Y'
-      };
-    }).filter(r=>!r.isManager&&r.name);
+      const utilPct        = rawUtil>1 ? rawUtil : rawUtil*100;
+      const name           = String(cv(iName)||'').trim();
 
-    renderCapAll();
-    document.getElementById('cap-badge').textContent=`${roster.length} team members`;
-    document.getElementById('cap-badge').className='bdg bdg-green';
-    document.getElementById('cap-sync-txt').textContent=`${roster.length} people synced from Roster tab`;
-  }catch(e){console.warn('Roster load failed:',e);}
+      // Use Utilization tab actual hours if available, fall back to Roster column
+      const actualBillable = actualByName[name] ?? hoursThisMonth;
+
+      return {
+        id:              i+1,
+        name,
+        role:            String(cv(iTitle)||''),
+        discipline:      String(cv(iDisc)||''),
+        utilTarget:      utilPct,
+        hoursThisMonth:  actualBillable,   // ← actual logged billable from Utilization tab
+        availBillable,                     // ← capacity ceiling from Roster tab
+        isManager:       String(cv(iMgr)||'').toUpperCase()==='Y'
+      };
+    })
+    .filter(r=>!r.isManager && r.name);
+
+  const utilCount = Object.keys(actualByName).length;
+  renderCapAll();
+  document.getElementById('cap-badge').textContent=`${roster.length} team members`;
+  document.getElementById('cap-badge').className='bdg bdg-green';
+  document.getElementById('cap-sync-txt').textContent=
+    `${roster.length} people synced · ${utilCount} with logged hours from Utilization tab`;
 }
 
 // CSV parsing
@@ -922,7 +967,7 @@ function renderCapRoster(){
       <td style="color:${DISC_COLORS[p.discipline]||'var(--text)'};font-weight:500">${esc(p.discipline)}</td>
       <td style="color:var(--text2)">${esc(p.role)}</td>
       <td style="text-align:center">${utilDisplay}</td>
-      <td style="font-weight:500">${Math.round(logged)}h</td>
+      <td style="font-weight:500">${Math.round(logged)}h<span style="font-size:10px;color:var(--text3);display:block">actual billable</span></td>
       <td style="font-weight:500;color:var(--blue-tc)">${Math.round(avail)}h</td>
       <td>
         <div class="util-wrap">
