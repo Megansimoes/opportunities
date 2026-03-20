@@ -1432,11 +1432,11 @@ function showHeatmapDetail(disc, mi){
     const rawH=(h[disc]||0)/dur;
     if(rawH<=0) return;
     const wtdH=rawH*(o.prob||0)/100;
-    dealRows.push({client:o.client,name:o.name,prob:o.prob,rawH,wtdH,owner:o.owner,close:o.close});
+    dealRows.push({client:o.client,name:o.name,prob:o.prob,rawH,owner:o.owner,close:o.close});
   });
-  dealRows.sort((a,b)=>b.wtdH-a.wtdH);
+  dealRows.sort((a,b)=>b.rawH-a.rawH);
 
-  const totalNewBiz=dealRows.reduce((s,r)=>s+r.wtdH,0);
+  const totalNewBiz=dealRows.reduce((s,r)=>s+r.rawH,0);
   const total=allocHours+totalNewBiz;
   const pct=(total/cap*100).toFixed(0);
   const pctColor=total/cap>=1?'var(--red)':total/cap>=.9?'var(--amber)':total/cap>=.75?'#F3812C':'var(--green)';
@@ -1465,10 +1465,7 @@ function showHeatmapDetail(disc, mi){
           <div class="hm-deal-name">${esc(r.name)}</div>
         </div>
         <span class="hm-deal-prob" style="background:${pBg(r.prob)};color:${pColor(r.prob)}">${Math.round(r.prob)}%</span>
-        <div class="hm-deal-hrs">
-          <div>${Math.round(r.wtdH)}h wtd</div>
-          <div style="font-size:10px;font-weight:400;color:var(--text3)">${Math.round(r.rawH)}h raw</div>
-        </div>
+        <div class="hm-deal-hrs">${Math.round(r.rawH)}h</div>
       </div>`;
     });
     body+=`</div>`;
