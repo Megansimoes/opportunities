@@ -850,11 +850,21 @@ async function loadRetainerData(){
     if(iHours<0||iService<0){console.warn('[Retainer] columns not found:',cols.map(c=>c.label));return;}
     // Map Default_Service value → discipline (explicit aliases + case-insensitive partial match)
     const SVC_ALIASES={
+      // PR
       'public relations':'PR','pr':'PR',
+      // Organic Social
       'social media':'Organic Social','social':'Organic Social','organic':'Organic Social',
+      // Photo/Video
       'photo':'Photo/Video','video':'Photo/Video','photo/video':'Photo/Video','photography':'Photo/Video',
+      // Client Services
       'client service':'Client Services','account management':'Client Services','account':'Client Services',
+      // Paid Media
       'paid':'Paid Media','media buying':'Paid Media','paid social':'Paid Media',
+      // Creative (catch all creative sub-disciplines)
+      'creative direction':'Creative','design':'Creative','copywriting':'Creative',
+      'graphic design':'Creative','art direction':'Creative','branding':'Creative',
+      // Web
+      'web development':'Web','web design':'Web','development':'Web',
     };
     function svcToDisc(svc){
       const s=String(svc||'').toLowerCase().trim();
