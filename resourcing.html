@@ -431,7 +431,7 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
   <div class="section-hdr" style="flex-wrap:wrap;gap:12px">
     <div>
       <div class="section-title">6-Month Pipeline Load</div>
-      <div class="section-sub">Current month: actual allocated % · Next month: planned + new biz % · Months 3–6: pipeline wtd %</div>
+      <div class="section-sub">Current month: actual allocated % · Next month: planned + new biz % · Months 3–6: retainer baseline %</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
       <label style="font-size:12px;color:var(--text2)">Min probability:</label>
@@ -550,6 +550,7 @@ let opps = [];
 let roster = [];
 let plannedByDisc = {};
 let plannedNextByDisc = {};
+let retainerByDisc = {};
 let selectedCapMonth = 'current'; // 'current' | 'next'
 let closed2026FilterMode = 'all';
 
@@ -673,7 +674,7 @@ async function loadRosterData(){
 
     // After roster parses, fetch utilization actuals and merge in
     await loadUtilizationData();
-    await Promise.all([loadPlannedData(), loadPlannedNextData()]);
+    await Promise.all([loadPlannedData(), loadPlannedNextData(), loadRetainerData()]);
     renderCapAll();
     document.getElementById('cap-badge').textContent=`${roster.length} team members`;
     document.getElementById('cap-badge').className='bdg bdg-green';
@@ -798,6 +799,36 @@ async function loadPlannedNextData(){
     });
     console.log('[Planned next] by discipline:',plannedNextByDisc);
   }catch(e){console.warn('Planned next load failed:',e);}
+}
+
+async function loadRetainerData(){
+  const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
+  try{
+    const r=await fetch(base+'Retainer');
+    if(!r.ok){ console.warn('[Retainer] tab not found'); return; }
+    const t=await r.text();
+    const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
+    if(!j.table||!j.table.rows||!j.table.cols) return;
+    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    function ci(cands){for(const c of cands){const f=cols.find(col=>col.label.includes(c.toLowerCase()));if(f!==undefined)return f.i;}return -1;}
+    const iUser   = ci(['assigned_user','assigned user','user']);
+    const iHours  = ci(['week_hours','week hours','hours']);
+    const iService= ci(['default_service','default service','service']);
+    if(iHours<0||iService<0){console.warn('[Retainer] columns not found:',cols.map(c=>c.label));return;}
+    // Map Default_Service value → discipline (case-insensitive partial match)
+    function svcToDisc(svc){
+      const s=String(svc||'').toLowerCase();
+      return DISCIPLINES.find(d=>s.includes(d.toLowerCase())||d.toLowerCase().includes(s))||null;
+    }
+    retainerByDisc={};
+    j.table.rows.filter(r=>r.c[iHours]?.v).forEach(r=>{
+      const weekHrs=parseFloat(String(r.c[iHours].v||'0').replace(/[^0-9.-]/g,''))||0;
+      const svc=r.c[iService]?.v||'';
+      const disc=svcToDisc(svc);
+      if(disc) retainerByDisc[disc]=(retainerByDisc[disc]||0)+(weekHrs*4.33); // weekly → monthly
+    });
+    console.log('[Retainer] by discipline (monthly hrs):',retainerByDisc);
+  }catch(e){console.warn('Retainer load failed:',e);}
 }
 
 // CSV parsing
@@ -1115,11 +1146,11 @@ function renderCapHeatmap(){
         const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
         html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(planned)}h planned + ${Math.round(newBizH)}h new biz / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)"><span>${pct.toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">proj</span></div>`;
       } else {
-        // Months 3–6: weighted pipeline hours %
-        const h=discMonthHours(d,m);
-        const ratio=h/cap;
+        // Months 3–6: retainer baseline hours %
+        const retH=retainerByDisc[d]||0;
+        const ratio=retH/cap;
         const cls=ratio>=1?'hm4':ratio>=.9?'hm3':ratio>=.75?'hm2':ratio>=.5?'hm1':'hm0';
-        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(h)}h pipeline (wtd) / ${Math.round(cap)}h capacity (${(ratio*100).toFixed(0)}%)">${(ratio*100).toFixed(0)}%</div>`;
+        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(retH)}h retainer / ${Math.round(cap)}h capacity (${(ratio*100).toFixed(0)}%)"><span>${(ratio*100).toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">retainer</span></div>`;
       }
     });
   });
@@ -1130,7 +1161,7 @@ function renderCapHeatmap(){
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FFD54F"></div>75–89%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FF7043"></div>90–99%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#B71C1C"></div>≥ 100%</div>
-    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Current month = actual logged % · Next month = planned + new biz pipeline % · Months 3–6 = pipeline wtd %</div>
+    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Current month = actual logged % · Next month = planned + new biz % · Months 3–6 = retainer baseline %</div>
   </div>`;
   document.getElementById('cap-heatmap').innerHTML=html;
 }
