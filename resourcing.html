@@ -193,11 +193,11 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
 .cap-hm-lbl{font-size:12px;color:var(--text2);padding-right:8px;white-space:nowrap;display:flex;align-items:center}
 .cap-hm-cell{height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:default;transition:filter .1s}
 .cap-hm-cell:hover{filter:brightness(.92)}
-.hm0{background:#F0F0F0;color:#666666}
-.hm1{background:#FDE8CC;color:#6B2E00}
-.hm2{background:#FBCFA0;color:#7A3500}
-.hm3{background:#F3812C;color:#ffffff}
-.hm4{background:#CC2E2E;color:#ffffff}
+.hm0{background:#C8E6C9;color:#1B5E20}
+.hm1{background:#FFF9C4;color:#6D4C00}
+.hm2{background:#FFD54F;color:#5D3A00}
+.hm3{background:#FF7043;color:#ffffff}
+.hm4{background:#B71C1C;color:#ffffff}
 .cap-hm-legend{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap}
 .cap-hm-li{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
 .cap-hm-sw{width:16px;height:8px;border-radius:2px}
@@ -1105,7 +1105,7 @@ function renderCapHeatmap(){
         const logged=rosterLogged(d);
         const pct=logged/cap*100;
         const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
-        html+=`<div class="cap-hm-cell ${cls}" style="outline:2px solid var(--blue);outline-offset:-2px" title="${d} · ${fmtMo(m)}: ${Math.round(logged)}h logged / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75">actual</span></div>`;
+        html+=`<div class="cap-hm-cell ${cls}" style="outline:2px solid var(--blue);outline-offset:-2px" title="${d} · ${fmtMo(m)}: ${Math.round(logged)}h logged / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75"> actual</span></div>`;
       } else if(mi===1){
         // Next month: planned (allocated) + new business pipeline hours %
         const planned=plannedNextByDisc[d]||0;
@@ -1113,7 +1113,7 @@ function renderCapHeatmap(){
         const total=planned+newBizH;
         const pct=total/cap*100;
         const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
-        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(planned)}h planned + ${Math.round(newBizH)}h new biz / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75">proj</span></div>`;
+        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(planned)}h planned + ${Math.round(newBizH)}h new biz / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75"> proj</span></div>`;
       } else {
         // Months 3–6: weighted pipeline hours %
         const h=discMonthHours(d,m);
@@ -1125,11 +1125,11 @@ function renderCapHeatmap(){
   });
   html+=`</div>
   <div class="cap-hm-legend">
-    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#F0F0F0;border:.5px solid #ccc"></div>≤ 50%</div>
-    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FDE8CC"></div>51–74%</div>
-    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FBCFA0"></div>75–89%</div>
-    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#F3812C"></div>90–99%</div>
-    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#CC2E2E"></div>≥ 100%</div>
+    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#C8E6C9;border:.5px solid #a5d6a7"></div>≤ 50%</div>
+    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FFF9C4;border:.5px solid #f9e976"></div>51–74%</div>
+    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FFD54F"></div>75–89%</div>
+    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FF7043"></div>90–99%</div>
+    <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#B71C1C"></div>≥ 100%</div>
     <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Current month = actual logged % · Next month = planned + new biz pipeline % · Months 3–6 = pipeline wtd %</div>
   </div>`;
   document.getElementById('cap-heatmap').innerHTML=html;
