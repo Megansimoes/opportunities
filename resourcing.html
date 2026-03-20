@@ -865,11 +865,11 @@ async function loadRetainerData(){
     retainerByDisc={};
     let rowCount=0, skipped=0;
     j.table.rows.filter(r=>r.c[iHours]?.v).forEach(r=>{
-      const weekHrs=parseFloat(String(r.c[iHours].v||'0').replace(/[^0-9.-]/g,''))||0;
+      const weekHrs=parseFloat(String(r.c[iHours].v||'0').replace(/[^0-9.-]/g,''))||0; // treated as monthly total
       const svc=r.c[iService]?.v||'';
       const user=iUser>=0?r.c[iUser]?.v||'?':'?';
       const disc=svcToDisc(svc);
-      if(disc){ retainerByDisc[disc]=(retainerByDisc[disc]||0)+(weekHrs*4.33); rowCount++; }
+      if(disc){ retainerByDisc[disc]=(retainerByDisc[disc]||0)+weekHrs; rowCount++; }
       else{ skipped++; console.log('[Retainer] skipped row — no disc match:',{user,svc,weekHrs}); }
     });
     console.log(`[Retainer] loaded ${rowCount} rows, skipped ${skipped}. Monthly hrs by discipline:`,JSON.stringify(retainerByDisc));
