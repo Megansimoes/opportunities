@@ -895,13 +895,13 @@ function mapRows(rows){if(!rows.length)return[];const keys=Object.keys(rows[0]);
   modified:findField(r,keys,['Last_Modified_Date','Last Modified','Modified Date','modified','updated'])||'—',
   close:findField(r,keys,['Forecasted_Close_Date','close','date','expected','due','target'])||'—',
   months:parseFloat((findField(r,keys,['Months','duration','length','contract months'])||'0').replace(/[^0-9.-]/g,''))||0,
-  svc_creative:     normPct(r['CF_Opp_1'])*val,
-  svc_photovideo:   normPct(r['CF_Opp_2'])*val,
-  svc_organicsocial:normPct(r['CF_Opp_3'])*val,
-  svc_paidmedia:    normPct(r['CF_Opp_4'])*val,
-  svc_pr:           normPct(r['CF_Opp_5'])*val,
-  svc_web:          normPct(r['CF_Opp_6'])*val,
-  svc_clientsvc:    normPct(r['CF_Opp_7'])*val,
+  svc_creative:     normPct(r['CF_Opp_DepartmentPercentages'])*val,
+  svc_photovideo:   normPct(r['CF_Opp_PhotoVideoDepartmentPercentage'])*val,
+  svc_organicsocial:normPct(r['CF_Opp_OrganicSocialDepartmentPercentage'])*val,
+  svc_paidmedia:    normPct(r['CF_Opp_PaidMediaDepartmentPercentage'])*val,
+  svc_pr:           normPct(r['CF_Opp_PublicRelationsDepartmentPercentage'])*val,
+  svc_web:          normPct(r['CF_Opp_WebDepartmentPercentage'])*val,
+  svc_clientsvc:    normPct(r['CF_Opp_ClientServicesDepartmentPercentage'])*val,
 };}).filter(r=>r.client!=='—'||r.name!=='—');}
 
 // ──────────────────────────────────────
