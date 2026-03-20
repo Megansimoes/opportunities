@@ -817,17 +817,21 @@ async function loadRetainerData(){
     if(iHours<0||iService<0){console.warn('[Retainer] columns not found:',cols.map(c=>c.label));return;}
     // Map Default_Service value → discipline (case-insensitive partial match)
     function svcToDisc(svc){
-      const s=String(svc||'').toLowerCase();
+      const s=String(svc||'').toLowerCase().trim();
+      if(!s) return null; // skip blank service rows — blank matches every discipline otherwise
       return DISCIPLINES.find(d=>s.includes(d.toLowerCase())||d.toLowerCase().includes(s))||null;
     }
     retainerByDisc={};
+    let rowCount=0, skipped=0;
     j.table.rows.filter(r=>r.c[iHours]?.v).forEach(r=>{
       const weekHrs=parseFloat(String(r.c[iHours].v||'0').replace(/[^0-9.-]/g,''))||0;
       const svc=r.c[iService]?.v||'';
+      const user=iUser>=0?r.c[iUser]?.v||'?':'?';
       const disc=svcToDisc(svc);
-      if(disc) retainerByDisc[disc]=(retainerByDisc[disc]||0)+(weekHrs*4.33); // weekly → monthly
+      if(disc){ retainerByDisc[disc]=(retainerByDisc[disc]||0)+(weekHrs*4.33); rowCount++; }
+      else{ skipped++; console.log('[Retainer] skipped row — no disc match:',{user,svc,weekHrs}); }
     });
-    console.log('[Retainer] by discipline (monthly hrs):',retainerByDisc);
+    console.log(`[Retainer] loaded ${rowCount} rows, skipped ${skipped}. Monthly hrs by discipline:`,JSON.stringify(retainerByDisc));
   }catch(e){console.warn('Retainer load failed:',e);}
 }
 
@@ -1146,11 +1150,13 @@ function renderCapHeatmap(){
         const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
         html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(planned)}h planned + ${Math.round(newBizH)}h new biz / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)"><span>${pct.toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">proj</span></div>`;
       } else {
-        // Months 3–6: retainer baseline hours %
+        // Months 3–6: retainer baseline + new biz pipeline (weighted by prob)
         const retH=retainerByDisc[d]||0;
-        const ratio=retH/cap;
+        const newBizH=hmNewBizDiscHours(d,m);
+        const total=retH+newBizH;
+        const ratio=total/cap;
         const cls=ratio>=1?'hm4':ratio>=.9?'hm3':ratio>=.75?'hm2':ratio>=.5?'hm1':'hm0';
-        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(retH)}h retainer / ${Math.round(cap)}h capacity (${(ratio*100).toFixed(0)}%)"><span>${(ratio*100).toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">retainer</span></div>`;
+        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(retH)}h retainer + ${Math.round(newBizH)}h new biz / ${Math.round(cap)}h capacity (${(ratio*100).toFixed(0)}%)"><span>${(ratio*100).toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">retainer</span></div>`;
       }
     });
   });
