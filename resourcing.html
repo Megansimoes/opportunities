@@ -493,7 +493,7 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
     </div>
     <div class="cap-table-wrap">
       <table>
-        <thead><tr><th>Client / Opportunity</th><th>Close Date</th><th>Stage</th><th>Prob</th><th>Total Hours</th><th>Billable Hours</th><th>Hours by Discipline</th></tr></thead>
+        <thead><tr><th>Client / Opportunity</th><th>Close Date</th><th>Stage</th><th>Prob</th><th style="text-align:right">Total</th><th style="text-align:right">Creative</th><th style="text-align:right">Photo/Video</th><th style="text-align:right">Organic Social</th><th style="text-align:right">Paid Media</th><th style="text-align:right">PR</th><th style="text-align:right">Web</th><th style="text-align:right">Client Services</th></tr></thead>
         <tbody id="cap-pipe-tbody"></tbody>
       </table>
     </div>
@@ -1220,23 +1220,26 @@ function renderCapPipeline(){
   rows.sort((a,b)=>(b.value||0)-(a.value||0));
   const totalTeamCap=totalTeamAvail()||1;
 
+  const PIPE_DISCS=['Creative','Photo/Video','Organic Social','Paid Media','PR','Web','Client Services'];
   document.getElementById('cap-pipe-tbody').innerHTML=rows.length?rows.map(o=>{
     const hours=oppToDiscHours(o);
     const totalH=Object.values(hours).reduce((a,b)=>a+b,0);
-    const wtdH=totalH*(o.prob||0)/100;
     const st=stColor(o.stage);
-    const pills=Object.entries(hours).filter(([,h])=>h>0).map(([d,h])=>`<span class="pill" style="background:transparent;color:#ffffff;border-color:rgba(255,255,255,.35)">${d}: ${Math.round(h)}h</span>`).join('');
-    const impactPct=(totalH/totalTeamCap*100).toFixed(1);
+    const discCells=PIPE_DISCS.map(d=>{
+      const h=hours[d]||0;
+      return h>0
+        ? `<td style="font-size:12px;font-weight:500;text-align:right">${Math.round(h)}h</td>`
+        : `<td style="text-align:right;color:var(--text3)">—</td>`;
+    }).join('');
     return`<tr>
       <td><div style="font-weight:500">${esc(o.client)}</div><div style="font-size:11px;color:var(--text2)">${esc(o.name)}</div></td>
       <td style="font-size:12px;color:var(--text2)">${esc(fmtDate(o.close))}</td>
       <td><span class="bdg" style="font-size:10px;background:${st.bg};color:${st.tc};border:.5px solid ${st.color}44">${shortStage(o.stage)}</span></td>
       <td><span class="bdg ${o.prob>=75?'bdg-green':o.prob>=50?'bdg-blue':o.prob>=30?'bdg-amber':'bdg-red'}">${Math.round(o.prob||0)}%</span></td>
-      <td style="font-size:13px;font-weight:500">${fmtHrs(totalH)}</td>
-      <td style="font-size:13px;font-weight:500">${fmtHrs(totalH)}<div class="mini-bar"><div class="mini-fill" style="width:${Math.min(parseFloat(impactPct),100)}%;background:var(--blue)"></div></div></td>
-      <td><div class="pill-list">${pills||'<span class="pill">No svc data</span>'}</div></td>
+      <td style="font-size:13px;font-weight:500;text-align:right">${fmtHrs(totalH)}</td>
+      ${discCells}
     </tr>`;
-  }).join(''):`<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text2)">No opportunities match filters</td></tr>`;
+  }).join(''):`<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text2)">No opportunities match filters</td></tr>`;
 }
 
 function renderCapRoster(){
