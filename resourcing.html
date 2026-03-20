@@ -961,20 +961,13 @@ function fullRoster(){ return [...roster, ...manualRoster]; }
 
 // Convert an opp's service breakdown to hours per discipline
 // Uses Calc_Column fields (dollar values) ÷ HOURLY_RATE
-// Falls back to distributing full deal value proportionally if no svc columns
+// Hours = CF_Opp_X% × Labor_Amount / HOURLY_RATE — no fallback distribution
 function oppToDiscHours(o){
   const hours = {};
-  let hasAny = false;
   Object.entries(DISC_MAP).forEach(([disc,svcKey])=>{
     const val = o[svcKey]||0;
-    if(val>0){ hours[disc]=val/HOURLY_RATE; hasAny=true; }
+    if(val>0) hours[disc]=val/HOURLY_RATE;
   });
-  // If no svc columns, distribute full value evenly across 6 disciplines
-  if(!hasAny && (o.value||0)>0){
-    const discs = Object.keys(DISC_MAP);
-    const each = o.value/HOURLY_RATE/discs.length;
-    discs.forEach(d=>hours[d]=each);
-  }
   return hours;
 }
 
