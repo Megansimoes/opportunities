@@ -493,7 +493,7 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
     </div>
     <div class="cap-table-wrap">
       <table>
-        <thead><tr><th>Client / Opportunity</th><th>Close Date</th><th>Stage</th><th>Prob</th><th style="text-align:right">Total</th><th style="text-align:right">Creative</th><th style="text-align:right">Photo/Video</th><th style="text-align:right">Organic Social</th><th style="text-align:right">Paid Media</th><th style="text-align:right">PR</th><th style="text-align:right">Web</th><th style="text-align:right">Client Services</th></tr></thead>
+        <thead><tr><th>Client / Opportunity</th><th>Close Date</th><th>Stage</th><th>Prob</th><th style="text-align:right">Months</th><th style="text-align:right">Total</th><th style="text-align:right;width:90px">Creative</th><th style="text-align:right;width:90px">Photo/Video</th><th style="text-align:right;width:90px">Organic Social</th><th style="text-align:right;width:90px">Paid Media</th><th style="text-align:right;width:90px">PR</th><th style="text-align:right;width:90px">Web</th><th style="text-align:right;width:90px">Client Services</th></tr></thead>
         <tbody id="cap-pipe-tbody"></tbody>
       </table>
     </div>
@@ -616,7 +616,7 @@ function stageNum(s){const m=(s||'').match(/^(\d+)/);return m?parseInt(m[1]):99;
 const isActive  = s=>{const n=stageNum(s);return n>=1&&n<=13;};
 const isContract= s=>stageNum(s)===14;
 const isHold    = s=>stageNum(s)===15;
-const isDead    = s=>stageNum(s)===16;
+const isDead    = s=>stageNum(s)===16||isHold(s); // Hold excluded everywhere
 const shortStage= s=>s.replace(/^\d+\.\s/,'').replace(/ \/ Move to Trash/,'').replace(/ \/ Contract Negotiations.*$/,'').split(' - ')[0];
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function fmtDate(v){if(!v||v==='—')return'—';const d=new Date(v);if(Number.isNaN(d.getTime()))return v;return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});}
@@ -1247,18 +1247,19 @@ function renderCapPipeline(){
     const discCells=PIPE_DISCS.map(d=>{
       const h=hours[d]||0;
       return h>0
-        ? `<td style="font-size:12px;font-weight:500;text-align:right">${Math.round(h)}h</td>`
-        : `<td style="text-align:right;color:var(--text3)">—</td>`;
+        ? `<td style="font-size:12px;font-weight:500;text-align:right;width:90px">${Math.round(h)}h</td>`
+        : `<td style="text-align:right;color:var(--text3);width:90px">—</td>`;
     }).join('');
     return`<tr>
       <td><div style="font-weight:500">${esc(o.client)}</div><div style="font-size:11px;color:var(--text2)">${esc(o.name)}</div></td>
       <td style="font-size:12px;color:var(--text2)">${esc(fmtDate(o.close))}</td>
       <td><span class="bdg" style="font-size:10px;background:${st.bg};color:${st.tc};border:.5px solid ${st.color}44">${shortStage(o.stage)}</span></td>
       <td><span class="bdg ${o.prob>=75?'bdg-green':o.prob>=50?'bdg-blue':o.prob>=30?'bdg-amber':'bdg-red'}">${Math.round(o.prob||0)}%</span></td>
+      <td style="font-size:12px;color:var(--text2);text-align:right">${o.months>0?o.months+'mo':'—'}</td>
       <td style="font-size:13px;font-weight:500;text-align:right">${fmtHrs(totalH)}</td>
       ${discCells}
     </tr>`;
-  }).join(''):`<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text2)">No opportunities match filters</td></tr>`;
+  }).join(''):`<tr><td colspan="13" style="text-align:center;padding:40px;color:var(--text2)">No opportunities match filters</td></tr>`;
 }
 
 function renderCapRoster(){
