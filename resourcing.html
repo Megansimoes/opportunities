@@ -431,7 +431,7 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
   <div class="section-hdr" style="flex-wrap:wrap;gap:12px">
     <div>
       <div class="section-title">6-Month Pipeline Load</div>
-      <div class="section-sub">Hours required per discipline · weighted by close probability</div>
+      <div class="section-sub">Current month: actual allocated % · Next month: planned + new biz % · Months 3–6: pipeline wtd %</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
       <label style="font-size:12px;color:var(--text2)">Min probability:</label>
@@ -951,15 +951,32 @@ function renderCapSummary(){
     return ((h[disc]||0)/dur)*((o.prob||0)/100);
   }
 
-  const curMonthPipeHrs = DISCIPLINES.reduce((s,d)=>s+all.reduce((ss,o)=>ss+oppSchedHours(o,d),0),0);
   const totalCap    = totalTeamAvail();
   const totalLogged = totalTeamLogged();
   const headroom    = totalCap - totalLogged;
 
+  // Next month projected: planned hours (from Planned+ tab) + new business pipeline (weighted by prob)
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth()+1, 1);
+  function oppSchedHoursForMonth(o, disc, monthStart){
+    const cd=parseCloseDate(o.close); if(!cd) return 0;
+    const dur=Math.max(1,o.months||1);
+    const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);
+    const end=new Date(start); end.setMonth(end.getMonth()+dur-1);
+    if(monthStart<start||monthStart>end) return 0;
+    const h=oppToDiscHours(o);
+    return ((h[disc]||0)/dur)*((o.prob||0)/100);
+  }
+  const newBizOpps = all.filter(o=>isNewBizOwner(o.owner));
+  const plannedNextTotal   = DISCIPLINES.reduce((s,d)=>s+(plannedNextByDisc[d]||0), 0);
+  const newBizNextMonthHrs = DISCIPLINES.reduce((s,d)=>s+newBizOpps.reduce((ss,o)=>ss+oppSchedHoursForMonth(o,d,nextMonthStart),0),0);
+  const projectedNext  = plannedNextTotal + newBizNextMonthHrs;
+  const projectedPct   = totalCap>0 ? projectedNext/totalCap*100 : 0;
+  const projColor = projectedPct>=100?'var(--red)':projectedPct>=90?'var(--amber)':'inherit';
+
   document.getElementById('cap-summary').innerHTML=`
     <div class="mc"><div class="mc-lbl">Available Billable Hours</div><div class="mc-val">${Math.round(totalCap).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${fullRoster().length} people · sum of individual targets</div></div>
     <div class="mc"><div class="mc-lbl">Hours Logged This Month</div><div class="mc-val">${Math.round(totalLogged).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${(totalCap>0?(totalLogged/totalCap*100):0).toFixed(1)}% of available capacity</div></div>
-    <div class="mc"><div class="mc-lbl">Pipeline Hours This Month</div><div class="mc-val">${Math.round(curMonthPipeHrs).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">from active opps · wtd by probability</div></div>
+    <div class="mc"><div class="mc-lbl">Next Month Projected Load</div><div class="mc-val" style="color:${projColor}">${projectedPct.toFixed(0)}<span style="font-size:14px;font-weight:400;color:var(--text2)">%</span></div><div class="mc-sub">planned + new biz pipeline vs capacity</div></div>
     <div class="mc"><div class="mc-lbl">Remaining Headroom</div><div class="mc-val" style="color:${headroom<0?'var(--red)':headroom<totalCap*.1?'var(--amber)':'inherit'}">${Math.abs(Math.round(headroom)).toLocaleString()}<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div><div class="mc-sub">${headroom<0?'over capacity this month':'available billable hrs remaining'}</div></div>
   `;
 }
@@ -1058,38 +1075,47 @@ function renderCapHeatmap(){
 
   const fmtMo=d=>d.toLocaleDateString('en-US',{month:'short',year:'2-digit'});
 
-  // Which month is "active" based on the toggle
-  const isNext = selectedCapMonth === 'next';
-  const activePlanned = isNext ? plannedNextByDisc : plannedByDisc;
-  const highlightMonth = isNext
-    ? new Date(now.getFullYear(), now.getMonth()+1, 1)
-    : new Date(now.getFullYear(), now.getMonth(), 1);
-  const isHighlight = d => d.getFullYear()===highlightMonth.getFullYear() && d.getMonth()===highlightMonth.getMonth();
-
-  // Pre-compute the selected-month cell data per discipline
-  const selectedPct={};
-  DISCIPLINES.forEach(d=>{
-    const cap=rosterCap(d)||1;
-    if(isNext){
-      const planned=activePlanned[d]||0;
-      selectedPct[d]={pct:planned/cap*100, label:'planned', hours:planned};
-    } else {
-      const logged=rosterLogged(d);
-      selectedPct[d]={pct:logged/cap*100, label:'logged', hours:logged};
-    }
-  });
+  // New biz pipeline hours per discipline for next month (weighted by prob)
+  const hmNextMonthStart = months[1];
+  function hmNewBizDiscHours(disc, monthDate){
+    let total=0;
+    opps.filter(o=>isNewBizOwner(o.owner)&&!isDead(o.stage)&&(o.value||0)>0&&(o.prob||0)>=minProb).forEach(o=>{
+      const cd=parseCloseDate(o.close); if(!cd) return;
+      const dur=Math.max(1,o.months||1);
+      const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);
+      const end=new Date(start); end.setMonth(end.getMonth()+dur-1);
+      if(monthDate>=start&&monthDate<=end){
+        const h=oppToDiscHours(o);
+        total+=((h[disc]||0)/dur)*((o.prob||0)/100);
+      }
+    });
+    return total;
+  }
 
   let html=`<div class="cap-hm-grid" style="grid-template-columns:130px repeat(6,1fr)">`;
-  html+=`<div></div>${months.map(m=>`<div class="cap-hm-hdr" style="${isHighlight(m)?'color:var(--text);font-weight:700':''}">${fmtMo(m)}</div>`).join('')}`;
+  // Column headers — bold current month
+  html+=`<div></div>${months.map((m,mi)=>`<div class="cap-hm-hdr" style="${mi===0?'color:var(--text);font-weight:700':''}">${fmtMo(m)}</div>`).join('')}`;
+
   DISCIPLINES.forEach(d=>{
     html+=`<div class="cap-hm-lbl">${d}</div>`;
     const cap=rosterCap(d)||1;
-    months.forEach(m=>{
-      if(isHighlight(m)){
-        const {pct, label, hours} = selectedPct[d];
+    months.forEach((m,mi)=>{
+      if(mi===0){
+        // Current month: actual logged hours %
+        const logged=rosterLogged(d);
+        const pct=logged/cap*100;
         const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
-        html+=`<div class="cap-hm-cell ${cls}" style="outline:2px solid var(--blue);outline-offset:-2px" title="${d} · ${fmtMo(m)}: ${Math.round(hours)}h ${label} / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75">${label}</span></div>`;
+        html+=`<div class="cap-hm-cell ${cls}" style="outline:2px solid var(--blue);outline-offset:-2px" title="${d} · ${fmtMo(m)}: ${Math.round(logged)}h logged / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75">actual</span></div>`;
+      } else if(mi===1){
+        // Next month: planned (allocated) + new business pipeline hours %
+        const planned=plannedNextByDisc[d]||0;
+        const newBizH=hmNewBizDiscHours(d,hmNextMonthStart);
+        const total=planned+newBizH;
+        const pct=total/cap*100;
+        const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
+        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(planned)}h planned + ${Math.round(newBizH)}h new biz / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)">${pct.toFixed(0)}% <span style="font-size:8px;opacity:.75">proj</span></div>`;
       } else {
+        // Months 3–6: weighted pipeline hours %
         const h=discMonthHours(d,m);
         const ratio=h/cap;
         const cls=ratio>=1?'hm4':ratio>=.9?'hm3':ratio>=.75?'hm2':ratio>=.5?'hm1':'hm0';
@@ -1104,7 +1130,7 @@ function renderCapHeatmap(){
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FBCFA0"></div>75–89%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#F3812C"></div>90–99%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#CC2E2E"></div>≥ 100%</div>
-    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Outlined column = ${isNext?'planned hours (next month)':'hours logged (current month)'} · other columns = pipeline wtd</div>
+    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Current month = actual logged % · Next month = planned + new biz pipeline % · Months 3–6 = pipeline wtd %</div>
   </div>`;
   document.getElementById('cap-heatmap').innerHTML=html;
 }
