@@ -880,24 +880,29 @@ async function loadRetainerData(){
 function parseCSV(text){if(window.Papa){const p=Papa.parse(text,{header:true,skipEmptyLines:true,transformHeader:h=>String(h||'').trim()});return(p.data||[]).filter(r=>Object.values(r).some(v=>String(v||'').trim()!==''));}const lines=text.trim().split(/\r?\n/);if(!lines.length)return[];const headers=splitCSV(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());return lines.slice(1).map(line=>{const vals=splitCSV(line).map(v=>v.replace(/^"|"$/g,'').trim());const row={};headers.forEach((h,i)=>row[h]=vals[i]||'');return row;}).filter(r=>Object.values(r).some(v=>v));}
 function splitCSV(line){const vals=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){if(line[i]==='"'){inQ=!inQ;continue;}if(line[i]===','&&!inQ){vals.push(cur);cur='';continue;}cur+=line[i];}vals.push(cur);return vals;}
 function findField(row,keys,candidates){for(const c of candidates){const k=keys.find(k=>k.toLowerCase().includes(c.toLowerCase()));if(k!==undefined&&row[k]!==undefined&&row[k]!=='')return row[k];}return null;}
-function mapRows(rows){if(!rows.length)return[];const keys=Object.keys(rows[0]);return rows.map(r=>({
+function normPct(v){// handles both 0–1 decimal and 0–100 percentage formats
+  const n=parseFloat(String(v||'0').replace(/[^0-9.-]/g,''))||0;
+  return n>1?n/100:n;}
+function mapRows(rows){if(!rows.length)return[];const keys=Object.keys(rows[0]);return rows.map(r=>{
+  const val=parseFloat((findField(r,keys,['Sale_Amount','value','amount','revenue','budget','fee','total'])||'0').replace(/[^0-9.-]/g,''));
+  return {
   client:findField(r,keys,['Company_Name','client','company','account'])||'—',
   name:findField(r,keys,['Opportunity_Name','opportunity','name','title','opp'])||'—',
-  value:parseFloat((findField(r,keys,['Sale_Amount','value','amount','revenue','budget','fee','total'])||'0').replace(/[^0-9.-]/g,'')),
+  value:val,
   prob:parseFloat((findField(r,keys,['Probability','prob','chance','likelihood'])||'0').replace(/[^0-9.-]/g,'')),
   stage:findField(r,keys,['Lead_Stage','stage','status','phase'])||'Unknown',
   owner:findField(r,keys,['Opportunity_Owner_Name','owner','assigned','rep','account manager'])||'—',
   modified:findField(r,keys,['Last_Modified_Date','Last Modified','Modified Date','modified','updated'])||'—',
   close:findField(r,keys,['Forecasted_Close_Date','close','date','expected','due','target'])||'—',
   months:parseFloat((findField(r,keys,['Months','duration','length','contract months'])||'0').replace(/[^0-9.-]/g,''))||0,
-  svc_creative:     parseFloat((r['Calc_Column_1']||'0').toString().replace(/[^0-9.-]/g,''))||0,
-  svc_photovideo:   parseFloat((r['Calc_Column_2']||'0').toString().replace(/[^0-9.-]/g,''))||0,
-  svc_organicsocial:parseFloat((r['Calc_Column_3']||'0').toString().replace(/[^0-9.-]/g,''))||0,
-  svc_paidmedia:    parseFloat((r['Calc_Column_4']||'0').toString().replace(/[^0-9.-]/g,''))||0,
-  svc_pr:           parseFloat((r['Calc_Column_5']||'0').toString().replace(/[^0-9.-]/g,''))||0,
-  svc_web:          parseFloat((r['Calc_Column_6']||'0').toString().replace(/[^0-9.-]/g,''))||0,
-  svc_clientsvc:    parseFloat((r['Calc_Column_7']||'0').toString().replace(/[^0-9.-]/g,''))||0,
-})).filter(r=>r.client!=='—'||r.name!=='—');}
+  svc_creative:     normPct(r['CF_Opp_1'])*val,
+  svc_photovideo:   normPct(r['CF_Opp_2'])*val,
+  svc_organicsocial:normPct(r['CF_Opp_3'])*val,
+  svc_paidmedia:    normPct(r['CF_Opp_4'])*val,
+  svc_pr:           normPct(r['CF_Opp_5'])*val,
+  svc_web:          normPct(r['CF_Opp_6'])*val,
+  svc_clientsvc:    normPct(r['CF_Opp_7'])*val,
+};}).filter(r=>r.client!=='—'||r.name!=='—');}
 
 // ──────────────────────────────────────
 // PIPELINE RENDERS (unchanged logic)
