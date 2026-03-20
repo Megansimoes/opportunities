@@ -885,6 +885,7 @@ function normPct(v){// handles both 0–1 decimal and 0–100 percentage formats
   return n>1?n/100:n;}
 function mapRows(rows){if(!rows.length)return[];const keys=Object.keys(rows[0]);return rows.map(r=>{
   const val=parseFloat((findField(r,keys,['Sale_Amount','value','amount','revenue','budget','fee','total'])||'0').replace(/[^0-9.-]/g,''));
+  const labor=parseFloat((r['Labor_Amount']||'0').toString().replace(/[^0-9.-]/g,''))||0;
   return {
   client:findField(r,keys,['Company_Name','client','company','account'])||'—',
   name:findField(r,keys,['Opportunity_Name','opportunity','name','title','opp'])||'—',
@@ -895,13 +896,13 @@ function mapRows(rows){if(!rows.length)return[];const keys=Object.keys(rows[0]);
   modified:findField(r,keys,['Last_Modified_Date','Last Modified','Modified Date','modified','updated'])||'—',
   close:findField(r,keys,['Forecasted_Close_Date','close','date','expected','due','target'])||'—',
   months:parseFloat((findField(r,keys,['Months','duration','length','contract months'])||'0').replace(/[^0-9.-]/g,''))||0,
-  svc_creative:     normPct(r['CF_Opp_DepartmentPercentages'])*val,
-  svc_photovideo:   normPct(r['CF_Opp_PhotoVideoDepartmentPercentage'])*val,
-  svc_organicsocial:normPct(r['CF_Opp_OrganicSocialDepartmentPercentage'])*val,
-  svc_paidmedia:    normPct(r['CF_Opp_PaidMediaDepartmentPercentage'])*val,
-  svc_pr:           normPct(r['CF_Opp_PublicRelationsDepartmentPercentage'])*val,
-  svc_web:          normPct(r['CF_Opp_WebDepartmentPercentage'])*val,
-  svc_clientsvc:    normPct(r['CF_Opp_ClientServicesDepartmentPercentage'])*val,
+  svc_creative:     normPct(r['CF_Opp_DepartmentPercentages'])*labor,
+  svc_photovideo:   normPct(r['CF_Opp_PhotoVideoDepartmentPercentage'])*labor,
+  svc_organicsocial:normPct(r['CF_Opp_OrganicSocialDepartmentPercentage'])*labor,
+  svc_paidmedia:    normPct(r['CF_Opp_PaidMediaDepartmentPercentage'])*labor,
+  svc_pr:           normPct(r['CF_Opp_PublicRelationsDepartmentPercentage'])*labor,
+  svc_web:          normPct(r['CF_Opp_WebDepartmentPercentage'])*labor,
+  svc_clientsvc:    normPct(r['CF_Opp_ClientServicesDepartmentPercentage'])*labor,
 };}).filter(r=>r.client!=='—'||r.name!=='—');}
 
 // ──────────────────────────────────────
