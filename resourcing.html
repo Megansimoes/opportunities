@@ -230,6 +230,28 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
 .cap-form-row input:focus,.cap-form-row select:focus{outline:none;border-color:var(--blue)}
 .cap-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
 .cap-modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:.5px solid var(--border)}
+/* heatmap detail modal */
+.hm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.hm-overlay.open{display:flex}
+.hm-modal{background:var(--surface);border:.5px solid var(--border2);border-radius:14px;padding:24px 28px;width:520px;max-width:95vw;max-height:84vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.2)}
+.hm-modal-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px}
+.hm-modal-title{font-size:16px;font-weight:600;letter-spacing:-.2px}
+.hm-modal-sub{font-size:12px;color:var(--text2);margin-top:3px}
+.hm-close{background:none;border:none;font-size:18px;cursor:pointer;color:var(--text2);padding:0;line-height:1}
+.hm-modal-section{margin-bottom:18px;padding-bottom:18px;border-bottom:.5px solid var(--border)}
+.hm-modal-section:last-child{margin-bottom:0;padding-bottom:0;border-bottom:none}
+.hm-section-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:10px}
+.hm-alloc-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:6px 0}
+.hm-alloc-hrs{font-weight:600;font-size:14px}
+.hm-deal-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:7px 0;border-bottom:.5px solid var(--border)}
+.hm-deal-row:last-child{border-bottom:none}
+.hm-deal-client{font-size:12px;font-weight:600;color:var(--text)}
+.hm-deal-name{font-size:11px;color:var(--text2);margin-top:2px}
+.hm-deal-prob{font-size:11px;font-weight:500;padding:2px 7px;border-radius:99px}
+.hm-deal-hrs{font-size:12px;font-weight:600;text-align:right;white-space:nowrap}
+.hm-total-bar{display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:var(--radius-sm);padding:10px 14px;margin-top:4px}
+.hm-total-lbl{font-size:12px;color:var(--text2)}
+.hm-total-val{font-size:18px;font-weight:700}
 /* toast */
 #cap-toast{position:fixed;bottom:24px;right:24px;z-index:3000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 .toast-msg{background:var(--surface);border:.5px solid var(--border2);border-radius:var(--radius);padding:11px 15px;font-size:13px;display:flex;align-items:center;gap:9px;box-shadow:0 4px 20px rgba(0,0,0,.12);animation:slideIn .2s ease;pointer-events:auto}
@@ -508,6 +530,17 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
   </div>
 
 </div>
+</div>
+
+<!-- Heatmap detail modal -->
+<div class="hm-overlay" id="hm-overlay" onclick="if(event.target===this)closeHmModal()">
+  <div class="hm-modal">
+    <div class="hm-modal-hdr">
+      <div><div class="hm-modal-title" id="hm-modal-title"></div><div class="hm-modal-sub" id="hm-modal-sub"></div></div>
+      <button class="hm-close" onclick="closeHmModal()">✕</button>
+    </div>
+    <div id="hm-modal-body"></div>
+  </div>
 </div>
 
 <!-- Roster modal -->
@@ -1148,7 +1181,7 @@ function renderCapHeatmap(){
         const logged=rosterLogged(d);
         const pct=logged/cap*100;
         const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
-        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(logged)}h logged / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)"><span>${pct.toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">actual</span></div>`;
+        html+=`<div class="cap-hm-cell ${cls}" style="cursor:pointer" onclick="showHeatmapDetail('${d}',${mi})" title="Click for details"><span>${pct.toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">actual</span></div>`;
       } else if(mi===1){
         // Next month: planned (allocated) + new business pipeline hours %
         const planned=plannedNextByDisc[d]||0;
@@ -1156,7 +1189,7 @@ function renderCapHeatmap(){
         const total=planned+newBizH;
         const pct=total/cap*100;
         const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
-        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(planned)}h planned + ${Math.round(newBizH)}h new biz / ${Math.round(cap)}h capacity (${pct.toFixed(0)}%)"><span>${pct.toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">proj</span></div>`;
+        html+=`<div class="cap-hm-cell ${cls}" style="cursor:pointer" onclick="showHeatmapDetail('${d}',${mi})" title="Click for details"><span>${pct.toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">proj</span></div>`;
       } else {
         // Months 3–6: retainer baseline + new biz pipeline (weighted by prob)
         const retH=retainerByDisc[d]||0;
@@ -1164,7 +1197,7 @@ function renderCapHeatmap(){
         const total=retH+newBizH;
         const ratio=total/cap;
         const cls=ratio>=1?'hm4':ratio>=.9?'hm3':ratio>=.75?'hm2':ratio>=.5?'hm1':'hm0';
-        html+=`<div class="cap-hm-cell ${cls}" title="${d} · ${fmtMo(m)}: ${Math.round(retH)}h retainer + ${Math.round(newBizH)}h new biz / ${Math.round(cap)}h capacity (${(ratio*100).toFixed(0)}%)"><span>${(ratio*100).toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">retainer</span></div>`;
+        html+=`<div class="cap-hm-cell ${cls}" style="cursor:pointer" onclick="showHeatmapDetail('${d}',${mi})" title="Click for details"><span>${(ratio*100).toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">retainer</span></div>`;
       }
     });
   });
@@ -1364,6 +1397,94 @@ window.addEventListener('DOMContentLoaded',()=>{
   setCapMonth('current');
   loadPipelineData();
 });
+
+// ──────────────────────────────────────
+// HEATMAP CELL DETAIL MODAL
+// ──────────────────────────────────────
+function closeHmModal(){document.getElementById('hm-overlay').classList.remove('open');}
+
+function showHeatmapDetail(disc, mi){
+  const now=new Date();
+  const months=[];
+  for(let i=0;i<6;i++){const d=new Date(now.getFullYear(),now.getMonth()+i,1);months.push(d);}
+  const m=months[mi];
+  const cap=rosterCap(disc)||1;
+  const minProb=parseInt(document.getElementById('hm-prob-filter')?.value)||0;
+  const fmtMo=d=>d.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const pColor=p=>p>=75?'var(--green-tc)':p>=50?'var(--blue-tc)':p>=30?'var(--amber-tc)':'var(--red-tc)';
+  const pBg=p=>p>=75?'var(--green-bg)':p>=50?'var(--blue-bg)':p>=30?'var(--amber-bg)':'var(--red-bg)';
+
+  // Allocated (base) hours depending on column
+  let allocLabel, allocHours;
+  if(mi===0){allocLabel='Actual hours logged this month'; allocHours=rosterLogged(disc);}
+  else if(mi===1){allocLabel='Planned hours (from Planned+ tab)'; allocHours=plannedNextByDisc[disc]||0;}
+  else{allocLabel='Retainer baseline hours'; allocHours=retainerByDisc[disc]||0;}
+
+  // New biz deals contributing hours to this disc/month
+  const dealRows=[];
+  opps.filter(o=>isNewBizOwner(o.owner)&&!isDead(o.stage)&&(o.value||0)>0&&(o.prob||0)>=minProb).forEach(o=>{
+    const cd=parseCloseDate(o.close); if(!cd) return;
+    const dur=Math.max(1,o.months||1);
+    const start=new Date(cd.getFullYear(),cd.getMonth()+1,1);
+    const end=new Date(start); end.setMonth(end.getMonth()+dur-1);
+    if(m<start||m>end) return;
+    const h=oppToDiscHours(o);
+    const rawH=(h[disc]||0)/dur;
+    if(rawH<=0) return;
+    const wtdH=rawH*(o.prob||0)/100;
+    dealRows.push({client:o.client,name:o.name,prob:o.prob,rawH,wtdH,owner:o.owner,close:o.close});
+  });
+  dealRows.sort((a,b)=>b.wtdH-a.wtdH);
+
+  const totalNewBiz=dealRows.reduce((s,r)=>s+r.wtdH,0);
+  const total=allocHours+totalNewBiz;
+  const pct=(total/cap*100).toFixed(0);
+  const pctColor=total/cap>=1?'var(--red)':total/cap>=.9?'var(--amber)':total/cap>=.75?'#F3812C':'var(--green)';
+
+  // Build modal
+  document.getElementById('hm-modal-title').textContent=`${disc} · ${fmtMo(m)}`;
+  document.getElementById('hm-modal-sub').textContent=`${Math.round(total)}h total · ${Math.round(cap)}h capacity`;
+
+  let body=`
+    <div class="hm-modal-section">
+      <div class="hm-section-lbl">Allocated Hours</div>
+      <div class="hm-alloc-row">
+        <span style="color:var(--text2)">${allocLabel}</span>
+        <span class="hm-alloc-hrs">${Math.round(allocHours)}h</span>
+      </div>
+    </div>
+    <div class="hm-modal-section">
+      <div class="hm-section-lbl">New Business Pipeline${dealRows.length?` · ${dealRows.length} deal${dealRows.length>1?'s':''}`:' · none'}</div>`;
+
+  if(dealRows.length){
+    body+=`<div>`;
+    dealRows.forEach(r=>{
+      body+=`<div class="hm-deal-row">
+        <div>
+          <div class="hm-deal-client">${esc(r.client)}</div>
+          <div class="hm-deal-name">${esc(r.name)}</div>
+        </div>
+        <span class="hm-deal-prob" style="background:${pBg(r.prob)};color:${pColor(r.prob)}">${Math.round(r.prob)}%</span>
+        <div class="hm-deal-hrs">
+          <div>${Math.round(r.wtdH)}h wtd</div>
+          <div style="font-size:10px;font-weight:400;color:var(--text3)">${Math.round(r.rawH)}h raw</div>
+        </div>
+      </div>`;
+    });
+    body+=`</div>`;
+  } else {
+    body+=`<div style="font-size:12px;color:var(--text3);padding:8px 0">No new business pipeline for this discipline and month.</div>`;
+  }
+
+  body+=`</div>
+    <div class="hm-total-bar">
+      <span class="hm-total-lbl">Total projected load</span>
+      <span class="hm-total-val" style="color:${pctColor}">${pct}%</span>
+    </div>`;
+
+  document.getElementById('hm-modal-body').innerHTML=body;
+  document.getElementById('hm-overlay').classList.add('open');
+}
 </script>
 
 </body>
