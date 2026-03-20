@@ -885,7 +885,8 @@ function normPct(v){// handles both 0–1 decimal and 0–100 percentage formats
   return n>1?n/100:n;}
 function mapRows(rows){if(!rows.length)return[];const keys=Object.keys(rows[0]);return rows.map(r=>{
   const val=parseFloat((findField(r,keys,['Sale_Amount','value','amount','revenue','budget','fee','total'])||'0').replace(/[^0-9.-]/g,''));
-  const labor=parseFloat((r['Labor_Amount']||'0').toString().replace(/[^0-9.-]/g,''))||0;
+  const laborRaw=parseFloat((r['Labor_Amount']||'0').toString().replace(/[^0-9.-]/g,''))||0;
+  const labor=laborRaw>0?laborRaw:val; // fall back to Sale_Amount when Labor_Amount is 0
   return {
   client:findField(r,keys,['Company_Name','client','company','account'])||'—',
   name:findField(r,keys,['Opportunity_Name','opportunity','name','title','opp'])||'—',
