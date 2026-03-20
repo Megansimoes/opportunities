@@ -815,10 +815,18 @@ async function loadRetainerData(){
     const iHours  = ci(['week_hours','week hours','hours']);
     const iService= ci(['default_service','default service','service']);
     if(iHours<0||iService<0){console.warn('[Retainer] columns not found:',cols.map(c=>c.label));return;}
-    // Map Default_Service value → discipline (case-insensitive partial match)
+    // Map Default_Service value → discipline (explicit aliases + case-insensitive partial match)
+    const SVC_ALIASES={
+      'public relations':'PR','pr':'PR',
+      'social media':'Organic Social','social':'Organic Social','organic':'Organic Social',
+      'photo':'Photo/Video','video':'Photo/Video','photo/video':'Photo/Video','photography':'Photo/Video',
+      'client service':'Client Services','account management':'Client Services','account':'Client Services',
+      'paid':'Paid Media','media buying':'Paid Media','paid social':'Paid Media',
+    };
     function svcToDisc(svc){
       const s=String(svc||'').toLowerCase().trim();
-      if(!s) return null; // skip blank service rows — blank matches every discipline otherwise
+      if(!s) return null; // skip blank rows — empty string matches every discipline otherwise
+      if(SVC_ALIASES[s]) return SVC_ALIASES[s];
       return DISCIPLINES.find(d=>s.includes(d.toLowerCase())||d.toLowerCase().includes(s))||null;
     }
     retainerByDisc={};
