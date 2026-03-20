@@ -979,10 +979,28 @@ function getFilteredOpps(){
     if(isDead(o.stage)) return false;
     if(stage==='active'  && !isActive(o.stage))   return false;
     if(stage==='contract'&& !isContract(o.stage)) return false;
+    if(stage==='all') { /* include hold, exclude dead (already filtered above) */ }
+    if(stage!=='active'&&stage!=='contract'&&stage!=='all' && o.stage!==stage) return false;
     if((o.prob||0)<minP) return false;
     return (o.value||0)>0;
   });
   return data;
+}
+
+function populateCfStageDropdown(){
+  const sel = document.getElementById('cf-stage');
+  if(!sel) return;
+  // collect unique stages from opps, exclude dead (stage 16)
+  const stages = [...new Set(opps.filter(o=>!isDead(o.stage)).map(o=>o.stage))]
+    .filter(s=>s&&s!=='Unknown')
+    .sort((a,b)=>stageNum(a)-stageNum(b));
+  // rebuild keeping the group options at top, then individual stages
+  sel.innerHTML =
+    `<option value="active">Active pipeline only</option>`+
+    `<option value="all">All (incl. hold)</option>`+
+    `<option value="contract">Contract signed only</option>`+
+    `<option disabled>──────────────</option>`+
+    stages.map(s=>`<option value="${s}">${shortStage(s)}</option>`).join('');
 }
 
 function discTotalHours(disc, oppsArr){
@@ -1005,6 +1023,7 @@ function totalTeamLogged(){ return fullRoster().reduce((s,r)=>s+personLogged(r),
 function renderCapAll(){
   if(!opps.length) return;
   populateCapDiscFilter();
+  populateCfStageDropdown();
   renderCapSummary();
   renderCapDiscCards();
   renderCapHeatmap();
