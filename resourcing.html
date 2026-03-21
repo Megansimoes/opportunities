@@ -772,6 +772,24 @@ async function loadUtilizationData(){
   }catch(e){console.warn('Utilization load failed:',e);}
 }
 
+// Shared service-name → discipline mapper (used by TJA and Retainer loaders)
+const SVC_ALIASES_GLOBAL={
+  'public relations':'PR','pr':'PR',
+  'social media':'Organic Social','social':'Organic Social','organic':'Organic Social',
+  'photo':'Photo/Video','video':'Photo/Video','photo/video':'Photo/Video','photography':'Photo/Video',
+  'client service':'Client Services','account management':'Client Services','account':'Client Services',
+  'paid':'Paid Media','media buying':'Paid Media','paid social':'Paid Media',
+  'creative direction':'Creative','design':'Creative','copywriting':'Creative',
+  'graphic design':'Creative','art direction':'Creative','branding':'Creative',
+  'web development':'Web','web design':'Web','development':'Web',
+};
+function svcToDisc(svc){
+  const s=String(svc||'').toLowerCase().trim();
+  if(!s) return null;
+  if(SVC_ALIASES_GLOBAL[s]) return SVC_ALIASES_GLOBAL[s];
+  return DISCIPLINES.find(d=>s.includes(d.toLowerCase())||d.toLowerCase().includes(s))||null;
+}
+
 async function loadPlannedData(){
   const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
   try{
@@ -836,69 +854,33 @@ async function loadPlannedNextData(){
   }catch(e){console.warn('Planned next load failed:',e);}
 }
 
-async function loadTJAData(){
+// Generic TJA loader — maps Default_Service → discipline via svcToDisc (same as Retainer)
+async function loadTJATab(sheetName, targetObj){
   const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
   try{
-    const r=await fetch(base+'Planned%20TJA');
-    if(!r.ok){ console.warn('[TJA] tab not found'); return; }
+    const r=await fetch(base+encodeURIComponent(sheetName));
+    if(!r.ok){ console.warn(`[${sheetName}] tab not found`); return; }
     const t=await r.text();
     const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
     if(!j.table||!j.table.rows||!j.table.cols) return;
     const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
     function ci(cands){for(const c of cands){const f=cols.find(col=>col.label.includes(c.toLowerCase()));if(f!==undefined)return f.i;}return -1;}
-    const iUser=ci(['assigned_user','assigned user','user']);
-    const iHours=ci(['week_hours','week hours','hours']);
-    if(iUser<0||iHours<0){console.warn('[TJA] columns not found:',cols.map(c=>c.label));return;}
-    const lookup={};
-    j.table.rows.filter(r=>r.c[iUser]?.v).forEach(r=>{
-      const name=String(r.c[iUser].v).trim();
-      const hours=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
-      lookup[name]=(lookup[name]||0)+hours;
+    const iHours =ci(['week_hours','week hours','hours']);
+    const iService=ci(['default_service','default service','service']);
+    if(iHours<0){console.warn(`[${sheetName}] hours column not found:`,cols.map(c=>c.label));return;}
+    // Reset
+    Object.keys(targetObj).forEach(k=>delete targetObj[k]);
+    j.table.rows.filter(r=>r.c[iHours]?.v).forEach(r=>{
+      const hrs=parseFloat(String(r.c[iHours].v||'0').replace(/[^0-9.-]/g,''))||0;
+      const svc=iService>=0?r.c[iService]?.v||'':'';
+      const disc=svcToDisc(svc);
+      if(disc) targetObj[disc]=(targetObj[disc]||0)+hrs;
     });
-    function normName(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
-    function firstLast(s){const p=normName(s).split(' ');return p[0]+' '+p[p.length-1];}
-    const lkeys=Object.keys(lookup);
-    tjaByDisc={};
-    fullRoster().forEach(p=>{
-      const pn=normName(p.name),pfl=firstLast(p.name);
-      let key=lkeys.find(k=>normName(k)===pn)||lkeys.find(k=>firstLast(k)===pfl);
-      if(key){const disc=p.discipline;tjaByDisc[disc]=(tjaByDisc[disc]||0)+lookup[key];}
-    });
-    console.log('[TJA] by discipline:',tjaByDisc);
-  }catch(e){console.warn('TJA load failed:',e);}
+    console.log(`[${sheetName}] by discipline:`,{...targetObj});
+  }catch(e){console.warn(`${sheetName} load failed:`,e);}
 }
-
-async function loadTJANextData(){
-  const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
-  try{
-    const r=await fetch(base+'Planned%20TJA%20Next');
-    if(!r.ok){ console.warn('[TJA Next] tab not found'); return; }
-    const t=await r.text();
-    const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
-    if(!j.table||!j.table.rows||!j.table.cols) return;
-    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
-    function ci(cands){for(const c of cands){const f=cols.find(col=>col.label.includes(c.toLowerCase()));if(f!==undefined)return f.i;}return -1;}
-    const iUser=ci(['assigned_user','assigned user','user']);
-    const iHours=ci(['week_hours','week hours','hours']);
-    if(iUser<0||iHours<0){console.warn('[TJA Next] columns not found:',cols.map(c=>c.label));return;}
-    const lookup={};
-    j.table.rows.filter(r=>r.c[iUser]?.v).forEach(r=>{
-      const name=String(r.c[iUser].v).trim();
-      const hours=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
-      lookup[name]=(lookup[name]||0)+hours;
-    });
-    function normName(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
-    function firstLast(s){const p=normName(s).split(' ');return p[0]+' '+p[p.length-1];}
-    const lkeys=Object.keys(lookup);
-    tjaNextByDisc={};
-    fullRoster().forEach(p=>{
-      const pn=normName(p.name),pfl=firstLast(p.name);
-      let key=lkeys.find(k=>normName(k)===pn)||lkeys.find(k=>firstLast(k)===pfl);
-      if(key){const disc=p.discipline;tjaNextByDisc[disc]=(tjaNextByDisc[disc]||0)+lookup[key];}
-    });
-    console.log('[TJA Next] by discipline:',tjaNextByDisc);
-  }catch(e){console.warn('TJA Next load failed:',e);}
-}
+async function loadTJAData(){ await loadTJATab('Planned TJA', tjaByDisc); }
+async function loadTJANextData(){ await loadTJATab('Planned TJA Next', tjaNextByDisc); }
 
 async function loadRetainerData(){
   const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
@@ -914,30 +896,7 @@ async function loadRetainerData(){
     const iHours  = ci(['week_hours','week hours','hours']);
     const iService= ci(['default_service','default service','service']);
     if(iHours<0||iService<0){console.warn('[Retainer] columns not found:',cols.map(c=>c.label));return;}
-    // Map Default_Service value → discipline (explicit aliases + case-insensitive partial match)
-    const SVC_ALIASES={
-      // PR
-      'public relations':'PR','pr':'PR',
-      // Organic Social
-      'social media':'Organic Social','social':'Organic Social','organic':'Organic Social',
-      // Photo/Video
-      'photo':'Photo/Video','video':'Photo/Video','photo/video':'Photo/Video','photography':'Photo/Video',
-      // Client Services
-      'client service':'Client Services','account management':'Client Services','account':'Client Services',
-      // Paid Media
-      'paid':'Paid Media','media buying':'Paid Media','paid social':'Paid Media',
-      // Creative (catch all creative sub-disciplines)
-      'creative direction':'Creative','design':'Creative','copywriting':'Creative',
-      'graphic design':'Creative','art direction':'Creative','branding':'Creative',
-      // Web
-      'web development':'Web','web design':'Web','development':'Web',
-    };
-    function svcToDisc(svc){
-      const s=String(svc||'').toLowerCase().trim();
-      if(!s) return null; // skip blank rows — empty string matches every discipline otherwise
-      if(SVC_ALIASES[s]) return SVC_ALIASES[s];
-      return DISCIPLINES.find(d=>s.includes(d.toLowerCase())||d.toLowerCase().includes(s))||null;
-    }
+    // Uses shared svcToDisc() defined at module level
     retainerByDisc={};
     let rowCount=0, skipped=0;
     j.table.rows.filter(r=>r.c[iHours]?.v).forEach(r=>{
@@ -1185,7 +1144,7 @@ function renderCapDiscCards(){
     const planned = activePlanned[d]||0;
     const tjaH    = activeTJA[d]||0;
     const pipeH   = discViewMonthPipeHrs(d);
-    const tjaTotal= tjaH + pipeH;
+    const tjaTotal= tjaH; // TJA tab hours only — pipeline shown separately on next month
     const avail   = cap - planned - tjaH;
     const cnt     = rosterForDisc(d).length;
 
