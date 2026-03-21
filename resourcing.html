@@ -794,7 +794,7 @@ function svcToDisc(svc){
 async function loadPlannedTab(sheetName, targetObj){
   const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
   try{
-    const r=await fetch(base+encodeURIComponent(sheetName));
+    const r=await fetch(base+sheetName); // pass name as-is so 'Planned+next' keeps its + (= space in query string)
     if(!r.ok){ console.warn(`[${sheetName}] tab not found`); return; }
     const t=await r.text();
     const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
