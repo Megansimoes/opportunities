@@ -583,6 +583,8 @@ let opps = [];
 let roster = [];
 let plannedByDisc = {};
 let plannedNextByDisc = {};
+let tjaByDisc = {};
+let tjaNextByDisc = {};
 let retainerByDisc = {};
 let selectedCapMonth = 'current'; // 'current' | 'next'
 let closed2026FilterMode = 'all';
@@ -707,7 +709,7 @@ async function loadRosterData(){
 
     // After roster parses, fetch utilization actuals and merge in
     await loadUtilizationData();
-    await Promise.all([loadPlannedData(), loadPlannedNextData(), loadRetainerData()]);
+    await Promise.all([loadPlannedData(), loadPlannedNextData(), loadTJAData(), loadTJANextData(), loadRetainerData()]);
     renderCapAll();
     document.getElementById('cap-badge').textContent=`${roster.length} team members`;
     document.getElementById('cap-badge').className='bdg bdg-green';
@@ -832,6 +834,70 @@ async function loadPlannedNextData(){
     });
     console.log('[Planned next] by discipline:',plannedNextByDisc);
   }catch(e){console.warn('Planned next load failed:',e);}
+}
+
+async function loadTJAData(){
+  const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
+  try{
+    const r=await fetch(base+'Planned%20TJA');
+    if(!r.ok){ console.warn('[TJA] tab not found'); return; }
+    const t=await r.text();
+    const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
+    if(!j.table||!j.table.rows||!j.table.cols) return;
+    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    function ci(cands){for(const c of cands){const f=cols.find(col=>col.label.includes(c.toLowerCase()));if(f!==undefined)return f.i;}return -1;}
+    const iUser=ci(['assigned_user','assigned user','user']);
+    const iHours=ci(['week_hours','week hours','hours']);
+    if(iUser<0||iHours<0){console.warn('[TJA] columns not found:',cols.map(c=>c.label));return;}
+    const lookup={};
+    j.table.rows.filter(r=>r.c[iUser]?.v).forEach(r=>{
+      const name=String(r.c[iUser].v).trim();
+      const hours=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
+      lookup[name]=(lookup[name]||0)+hours;
+    });
+    function normName(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
+    function firstLast(s){const p=normName(s).split(' ');return p[0]+' '+p[p.length-1];}
+    const lkeys=Object.keys(lookup);
+    tjaByDisc={};
+    fullRoster().forEach(p=>{
+      const pn=normName(p.name),pfl=firstLast(p.name);
+      let key=lkeys.find(k=>normName(k)===pn)||lkeys.find(k=>firstLast(k)===pfl);
+      if(key){const disc=p.discipline;tjaByDisc[disc]=(tjaByDisc[disc]||0)+lookup[key];}
+    });
+    console.log('[TJA] by discipline:',tjaByDisc);
+  }catch(e){console.warn('TJA load failed:',e);}
+}
+
+async function loadTJANextData(){
+  const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
+  try{
+    const r=await fetch(base+'Planned%20TJA%20Next');
+    if(!r.ok){ console.warn('[TJA Next] tab not found'); return; }
+    const t=await r.text();
+    const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
+    if(!j.table||!j.table.rows||!j.table.cols) return;
+    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
+    function ci(cands){for(const c of cands){const f=cols.find(col=>col.label.includes(c.toLowerCase()));if(f!==undefined)return f.i;}return -1;}
+    const iUser=ci(['assigned_user','assigned user','user']);
+    const iHours=ci(['week_hours','week hours','hours']);
+    if(iUser<0||iHours<0){console.warn('[TJA Next] columns not found:',cols.map(c=>c.label));return;}
+    const lookup={};
+    j.table.rows.filter(r=>r.c[iUser]?.v).forEach(r=>{
+      const name=String(r.c[iUser].v).trim();
+      const hours=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
+      lookup[name]=(lookup[name]||0)+hours;
+    });
+    function normName(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
+    function firstLast(s){const p=normName(s).split(' ');return p[0]+' '+p[p.length-1];}
+    const lkeys=Object.keys(lookup);
+    tjaNextByDisc={};
+    fullRoster().forEach(p=>{
+      const pn=normName(p.name),pfl=firstLast(p.name);
+      let key=lkeys.find(k=>normName(k)===pn)||lkeys.find(k=>firstLast(k)===pfl);
+      if(key){const disc=p.discipline;tjaNextByDisc[disc]=(tjaNextByDisc[disc]||0)+lookup[key];}
+    });
+    console.log('[TJA Next] by discipline:',tjaNextByDisc);
+  }catch(e){console.warn('TJA Next load failed:',e);}
 }
 
 async function loadRetainerData(){
@@ -1111,38 +1177,47 @@ function renderCapDiscCards(){
   }
 
   const activePlanned = isNext ? plannedNextByDisc : plannedByDisc;
+  const activeTJA     = isNext ? tjaNextByDisc    : tjaByDisc;
 
   document.getElementById('cap-disc-cards').innerHTML = DISCIPLINES.map(d=>{
     const cap     = rosterCap(d);
     const logged  = rosterLogged(d);
     const planned = activePlanned[d]||0;
-    const pipeH   = discViewMonthPipeHrs(d); // only shown in next month view
+    const tjaH    = activeTJA[d]||0;
+    const pipeH   = discViewMonthPipeHrs(d);
+    const tjaTotal= tjaH + pipeH;
+    const avail   = cap - planned - tjaH;
+    const cnt     = rosterForDisc(d).length;
+
     const pctLog  = cap>0?Math.min(logged/cap*100,100):0;
     const pctPlan = cap>0?Math.min(planned/cap*100,100):0;
-    const pctPip  = cap>0?Math.min(pipeH/cap*100,100):0;
-    const avail   = cap - logged;
-    const cnt     = rosterForDisc(d).length;
+    const pctTJA  = cap>0?Math.min(tjaTotal/cap*100,100):0;
+
     const barColor  = pctLog>=100?'var(--red)':pctLog>=90?'var(--amber)':pctLog>=70?'var(--green)':'var(--blue)';
     const planColor = pctPlan>=100?'var(--red)':pctPlan>=90?'var(--amber)':'#F3812C';
+    const tjaColor  = pctTJA>=100?'var(--red)':pctTJA>=90?'var(--amber)':'#7C5CBF';
 
     const plannedBar = planned>0?`
-      <div class="cap-bar-lbl"><span>Hours planned</span><span>${Math.round(planned)}h / ${Math.round(cap)}h avail</span></div>
+      <div class="cap-bar-lbl"><span>Billable Hours Planned</span><span>${Math.round(planned)}h / ${Math.round(cap)}h avail</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPlan}%;background:${planColor}"></div></div>`:'';
+
+    const tjaBar = `
+      <div class="cap-bar-lbl"><span>TJA + New Business</span><span>${Math.round(tjaTotal)}h / ${Math.round(cap)}h avail</span></div>
+      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctTJA}%;background:${tjaColor}"></div></div>`;
 
     const loggedBar = !isNext?`
       <div class="cap-bar-lbl"><span>Hours logged</span><span>${Math.round(logged)}h / ${Math.round(cap)}h avail</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctLog}%;background:${barColor}"></div></div>`:'';
 
-    const pipeBar = isNext?`
-      <div class="cap-bar-lbl"><span>Pipeline demand (${minProb>0?minProb+'%+':'all probs'})</span><span>${Math.round(pipeH)}h</span></div>
-      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPip}%;background:#F3812C;opacity:.55"></div></div>`:'';
-
+    const availColor = avail<0?'var(--red)':'var(--text2)';
     const chips = isNext
-      ? `<span class="cap-chip">${Math.round(planned||0)}h planned</span>
-         <span class="cap-chip">${Math.round(pipeH)}h pipeline</span>`
+      ? `<span class="cap-chip" style="color:${planColor}">${Math.round(planned)}h billable</span>
+         <span class="cap-chip" style="color:${tjaColor}">${Math.round(tjaTotal)}h TJA+NB</span>
+         <span class="cap-chip" style="color:${availColor}">${Math.abs(Math.round(avail))}h ${avail<0?'over':'avail'}</span>`
       : `<span class="cap-chip">${Math.round(logged)}h logged</span>
-         ${planned>0?`<span class="cap-chip" style="color:${planColor}">${Math.round(planned)}h planned</span>`:''}
-         <span class="cap-chip" style="color:${avail<0?'var(--red)':'var(--text2)'}">${Math.abs(Math.round(avail))}h ${avail<0?'over':'avail'}</span>`;
+         ${planned>0?`<span class="cap-chip" style="color:${planColor}">${Math.round(planned)}h billable</span>`:''}
+         <span class="cap-chip" style="color:${tjaColor}">${Math.round(tjaTotal)}h TJA+NB</span>
+         <span class="cap-chip" style="color:${availColor}">${Math.abs(Math.round(avail))}h ${avail<0?'over':'avail'}</span>`;
 
     return `<div class="cap-disc-card">
       <div class="cap-disc-top">
@@ -1150,8 +1225,8 @@ function renderCapDiscCards(){
         <div class="cap-disc-ppl">${cnt} ${cnt===1?'person':'people'}</div>
       </div>
       ${plannedBar}
+      ${tjaBar}
       ${loggedBar}
-      ${pipeBar}
       <div class="cap-disc-chips">${chips}</div>
     </div>`;
   }).join('');
