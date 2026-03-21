@@ -1192,10 +1192,12 @@ function renderCapDiscCards(){
     const pctLog  = cap>0?Math.min(logged/cap*100,100):0;
     const pctPlan = cap>0?Math.min(planned/cap*100,100):0;
     const pctTJA  = cap>0?Math.min(tjaTotal/cap*100,100):0;
+    const pctPip  = cap>0?Math.min(pipeH/cap*100,100):0;
 
     const barColor  = pctLog>=100?'var(--red)':pctLog>=90?'var(--amber)':pctLog>=70?'var(--green)':'var(--blue)';
     const planColor = pctPlan>=100?'var(--red)':pctPlan>=90?'var(--amber)':'#F3812C';
     const tjaColor  = pctTJA>=100?'var(--red)':pctTJA>=90?'var(--amber)':'#7C5CBF';
+    const pipColor  = '#F3812C';
 
     const plannedBar = planned>0?`
       <div class="cap-bar-lbl"><span>Billable Hours Planned</span><span>${Math.round(planned)}h / ${Math.round(cap)}h avail</span></div>
@@ -1209,10 +1211,15 @@ function renderCapDiscCards(){
       <div class="cap-bar-lbl"><span>Hours logged</span><span>${Math.round(logged)}h / ${Math.round(cap)}h avail</span></div>
       <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctLog}%;background:${barColor}"></div></div>`:'';
 
+    const pipeBar = isNext?`
+      <div class="cap-bar-lbl"><span>Pipeline demand (${minProb>0?minProb+'%+':'all probs'})</span><span>${Math.round(pipeH)}h</span></div>
+      <div class="cap-bar-track"><div class="cap-bar-fill" style="width:${pctPip}%;background:${pipColor};opacity:.55"></div></div>`:'';
+
     const availColor = avail<0?'var(--red)':'var(--text2)';
     const chips = isNext
       ? `<span class="cap-chip" style="color:${planColor}">${Math.round(planned)}h billable</span>
          <span class="cap-chip" style="color:${tjaColor}">${Math.round(tjaTotal)}h TJA+NB</span>
+         <span class="cap-chip" style="color:var(--text2)">${Math.round(pipeH)}h pipeline</span>
          <span class="cap-chip" style="color:${availColor}">${Math.abs(Math.round(avail))}h ${avail<0?'over':'avail'}</span>`
       : `<span class="cap-chip">${Math.round(logged)}h logged</span>
          ${planned>0?`<span class="cap-chip" style="color:${planColor}">${Math.round(planned)}h billable</span>`:''}
@@ -1227,6 +1234,7 @@ function renderCapDiscCards(){
       ${plannedBar}
       ${tjaBar}
       ${loggedBar}
+      ${pipeBar}
       <div class="cap-disc-chips">${chips}</div>
     </div>`;
   }).join('');
