@@ -790,69 +790,53 @@ function svcToDisc(svc){
   return DISCIPLINES.find(d=>s.includes(d.toLowerCase())||d.toLowerCase().includes(s))||null;
 }
 
-async function loadPlannedData(){
+// Generic planned loader — maps by assigned_user→roster first, falls back to service column
+async function loadPlannedTab(sheetName, targetObj){
   const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
   try{
-    const r=await fetch(base+'Planned');
-    if(!r.ok){ console.warn('[Planned] tab not found'); return; }
+    const r=await fetch(base+encodeURIComponent(sheetName));
+    if(!r.ok){ console.warn(`[${sheetName}] tab not found`); return; }
     const t=await r.text();
     const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
     if(!j.table||!j.table.rows||!j.table.cols) return;
     const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
     function ci(cands){for(const c of cands){const f=cols.find(col=>col.label.includes(c.toLowerCase()));if(f!==undefined)return f.i;}return -1;}
-    const iUser=ci(['assigned_user','assigned user','user']);
-    const iHours=ci(['week_hours','week hours','hours']);
-    if(iUser<0||iHours<0){console.warn('[Planned] columns not found:',cols.map(c=>c.label));return;}
-    const lookup={};
-    j.table.rows.filter(r=>r.c[iUser]?.v).forEach(r=>{
-      const name=String(r.c[iUser].v).trim();
-      const hours=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
-      lookup[name]=(lookup[name]||0)+hours;
-    });
-    function normName(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
-    function firstLast(s){const p=normName(s).split(' ');return p[0]+' '+p[p.length-1];}
-    const lkeys=Object.keys(lookup);
-    plannedByDisc={};
-    fullRoster().forEach(p=>{
-      const pn=normName(p.name),pfl=firstLast(p.name);
-      let key=lkeys.find(k=>normName(k)===pn)||lkeys.find(k=>firstLast(k)===pfl);
-      if(key){const disc=p.discipline;plannedByDisc[disc]=(plannedByDisc[disc]||0)+lookup[key];}
-    });
-    console.log('[Planned] by discipline:',plannedByDisc);
-  }catch(e){console.warn('Planned load failed:',e);}
-}
+    const iUser   = ci(['assigned_user','assigned user','user']);
+    const iHours  = ci(['week_hours','week hours','hours']);
+    const iService= ci(['default_service','default service','service']);
+    if(iHours<0){console.warn(`[${sheetName}] hours column not found`);return;}
 
-async function loadPlannedNextData(){
-  const base=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=`;
-  try{
-    const r=await fetch(base+'Planned+next');
-    if(!r.ok){ console.warn('[Planned next] tab not found'); return; }
-    const t=await r.text();
-    const j=JSON.parse(t.slice(t.indexOf('(')+1,t.lastIndexOf(')')));
-    if(!j.table||!j.table.rows||!j.table.cols) return;
-    const cols=j.table.cols.map((c,i)=>({label:String(c.label||c.id||'').toLowerCase().trim(),i}));
-    function ci(cands){for(const c of cands){const f=cols.find(col=>col.label.includes(c.toLowerCase()));if(f!==undefined)return f.i;}return -1;}
-    const iUser=ci(['assigned_user','assigned user','user']);
-    const iHours=ci(['week_hours','week hours','hours']);
-    if(iUser<0||iHours<0){console.warn('[Planned next] columns not found:',cols.map(c=>c.label));return;}
-    const lookup={};
-    j.table.rows.filter(r=>r.c[iUser]?.v).forEach(r=>{
-      const name=String(r.c[iUser].v).trim();
-      const hours=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
-      lookup[name]=(lookup[name]||0)+hours;
-    });
     function normName(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
     function firstLast(s){const p=normName(s).split(' ');return p[0]+' '+p[p.length-1];}
-    const lkeys=Object.keys(lookup);
-    plannedNextByDisc={};
+
+    // Build roster name → discipline lookup
+    const rosterMap={};
     fullRoster().forEach(p=>{
-      const pn=normName(p.name),pfl=firstLast(p.name);
-      let key=lkeys.find(k=>normName(k)===pn)||lkeys.find(k=>firstLast(k)===pfl);
-      if(key){const disc=p.discipline;plannedNextByDisc[disc]=(plannedNextByDisc[disc]||0)+lookup[key];}
+      const pn=normName(p.name), pfl=firstLast(p.name);
+      rosterMap[pn]=p.discipline; rosterMap[pfl]=p.discipline;
     });
-    console.log('[Planned next] by discipline:',plannedNextByDisc);
-  }catch(e){console.warn('Planned next load failed:',e);}
+
+    // Reset target
+    Object.keys(targetObj).forEach(k=>delete targetObj[k]);
+
+    j.table.rows.forEach(r=>{
+      const hrs=parseFloat(String(r.c[iHours]?.v||'0').replace(/[^0-9.-]/g,''))||0;
+      if(!hrs) return;
+      const userName = iUser>=0 ? String(r.c[iUser]?.v||'').trim() : '';
+      const svcName  = iService>=0 ? String(r.c[iService]?.v||'').trim() : '';
+
+      // 1) Try assigned_user → roster discipline
+      let disc = userName ? (rosterMap[normName(userName)] || rosterMap[firstLast(userName)] || null) : null;
+      // 2) Fall back to service column → svcToDisc
+      if(!disc && svcName) disc = svcToDisc(svcName);
+
+      if(disc) targetObj[disc]=(targetObj[disc]||0)+hrs;
+    });
+    console.log(`[${sheetName}] by discipline:`,{...targetObj});
+  }catch(e){console.warn(`${sheetName} load failed:`,e);}
 }
+async function loadPlannedData()    { await loadPlannedTab('Planned',      plannedByDisc);     }
+async function loadPlannedNextData(){ await loadPlannedTab('Planned+next', plannedNextByDisc); }
 
 // Generic TJA loader — maps Default_Service → discipline via svcToDisc (same as Retainer)
 async function loadTJATab(sheetName, targetObj){
