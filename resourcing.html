@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agency Dashboard</title>
+<link rel="icon" type="image/png" href="https://thejamesagency.com/wp-content/uploads/2022/01/cropped-TJA_Favicon-32x32.png">
+<link rel="shortcut icon" href="https://thejamesagency.com/wp-content/uploads/2022/01/cropped-TJA_Favicon-32x32.png">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <style>
 /* ─────────────────────────────────────────
@@ -519,7 +521,7 @@ body{font-family:var(--font);font-size:14px;background:var(--bg);color:var(--tex
     </div>
     <div class="cap-table-wrap">
       <table>
-        <thead><tr><th>Name</th><th>Discipline</th><th>Title</th><th>Util Target</th><th>Actual Billable Hrs</th><th>Available Billable Hrs</th><th>Utilization</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Discipline</th><th>Title</th><th>Util Target</th><th>Actual Billable Hrs</th><th>Available Billable Hrs</th><th></th></tr></thead>
         <tbody id="cap-roster-tbody"></tbody>
       </table>
     </div>
@@ -1232,11 +1234,13 @@ function renderCapHeatmap(){
     const cap=rosterCap(d)||1;
     months.forEach((m,mi)=>{
       if(mi===0){
-        // Current month: actual logged hours %
-        const logged=rosterLogged(d);
-        const pct=logged/cap*100;
+        // Current month: billable planned + TJA hours / available
+        const billable=(plannedByDisc[d]||0);
+        const tja=(tjaByDisc[d]||0);
+        const total=billable+tja;
+        const pct=total/cap*100;
         const cls=pct>=100?'hm4':pct>=90?'hm3':pct>=75?'hm2':pct>=50?'hm1':'hm0';
-        html+=`<div class="cap-hm-cell ${cls}" style="cursor:pointer" onclick="showHeatmapDetail('${d}',${mi})" title="Click for details"><span>${pct.toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">actual</span></div>`;
+        html+=`<div class="cap-hm-cell ${cls}" style="cursor:pointer" onclick="showHeatmapDetail('${d}',${mi})" title="Click for details"><span>${pct.toFixed(0)}%</span><span style="font-size:9px;font-weight:400;opacity:.7;letter-spacing:.03em">planned</span></div>`;
       } else if(mi===1){
         // Next month: planned (allocated) + new business pipeline hours %
         const planned=plannedNextByDisc[d]||0;
@@ -1263,7 +1267,7 @@ function renderCapHeatmap(){
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FFD54F"></div>75–89%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#FF7043"></div>90–99%</div>
     <div class="cap-hm-li"><div class="cap-hm-sw" style="background:#B71C1C"></div>≥ 100%</div>
-    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Current month = actual logged % · Next month = planned + new biz % · Months 3–6 = retainer baseline %</div>
+    <div class="cap-hm-li" style="margin-left:auto;font-size:11px;color:var(--text3)">Current month = billable + TJA planned % · Next month = planned + new biz % · Months 3–6 = retainer baseline %</div>
   </div>`;
   document.getElementById('cap-heatmap').innerHTML=html;
 }
@@ -1320,21 +1324,14 @@ function renderCapRoster(){
     const utilDisplay=p.utilTarget?Math.round(p.utilTarget)+'%':'—';
     return`<tr>
       <td style="font-weight:500">${esc(p.name)}${isManual?'<span style="font-size:10px;color:var(--text3);margin-left:5px">manual</span>':''}</td>
-      <td style="color:${DISC_COLORS[p.discipline]||'var(--text)'};font-weight:500">${esc(p.discipline)}</td>
+      <td style="color:#F3812C;font-weight:500">${esc(p.discipline)}</td>
       <td style="color:var(--text2)">${esc(p.role)}</td>
       <td style="text-align:center">${utilDisplay}</td>
       <td style="font-weight:500">${p.actualBillable!==null&&p.actualBillable!==undefined ? Math.round(p.actualBillable)+'h' : '<span style="color:var(--text3)">—</span>'}</td>
       <td style="font-weight:500;color:var(--blue-tc)">${Math.round(avail)}h</td>
-      <td>
-        <div class="util-wrap">
-          <div class="util-track"><div class="cap-bar-fill" style="width:${Math.min(pct,100)}%;background:${bc}"></div></div>
-          <div class="util-pct" style="color:${bc}">${pct.toFixed(0)}%</div>
-        </div>
-      </td>
-      <td><span class="bdg ${bCls}">${bLbl}</span></td>
       <td style="white-space:nowrap">${isManual?`<button class="btn" style="font-size:11px;padding:3px 9px;color:var(--red)" onclick="deleteManualRoster(${p.id})">✕</button>`:'<span style="font-size:11px;color:var(--text3)">Sheet</span>'}</td>
     </tr>`;
-  }).join(''):`<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text2)">No team members${!roster.length?' · Roster tab not loaded yet':''}</td></tr>`;
+  }).join(''):`<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text2)">No team members${!roster.length?' · Roster tab not loaded yet':''}</td></tr>`;
 }
 
 function setCapMonth(which){
@@ -1475,7 +1472,7 @@ function showHeatmapDetail(disc, mi){
 
   // Allocated (base) hours depending on column
   let allocLabel, allocHours;
-  if(mi===0){allocLabel='Actual hours logged this month'; allocHours=rosterLogged(disc);}
+  if(mi===0){allocLabel='Billable planned + TJA hours'; allocHours=(plannedByDisc[disc]||0)+(tjaByDisc[disc]||0);}
   else if(mi===1){allocLabel='Planned hours (from Planned+ tab)'; allocHours=plannedNextByDisc[disc]||0;}
   else{allocLabel='Retainer baseline hours'; allocHours=retainerByDisc[disc]||0;}
 
